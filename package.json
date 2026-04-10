@@ -1,0 +1,24 @@
+{
+  "name": "math-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Junior algebra teaching video MVP built with Remotion, React, and TypeScript.",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts AlgebraLinearEquationMvp out/algebra-linear-equation-mvp.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "katex": "^0.16.22",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "^4.0.447"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.447",
+    "@rspack/binding-darwin-arm64": "^1.7.6",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "typescript": "^5.9.3"
+  }
+}
