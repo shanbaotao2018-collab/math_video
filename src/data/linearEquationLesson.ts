@@ -1,12 +1,20 @@
 import type {AlgebraLesson} from '../types/algebra';
+import {generateAlgebraSteps} from '../engine/generator';
+import {normalizeLessonWithTemplate} from '../utils/templates';
 
-export const linearEquationLesson: AlgebraLesson = {
+const generatedProblem = generateAlgebraSteps('4(x+2)=20');
+
+if (generatedProblem.supported === false) {
+  throw new Error(generatedProblem.reason);
+}
+
+const rawLinearEquationLesson: AlgebraLesson = {
   layout: 'combined-main',
   title: '解一元一次方程',
   problemType: '一元一次方程',
-  prompt: '2(x+3)=14',
+  prompt: generatedProblem.problem.equation,
   strategy: '先展开括号，再移项，最后把未知数前面的系数化为 1。',
-  answer: 'x=4',
+  answer: generatedProblem.problem.answer,
   labels: {
     kicker: '初中代数推导视频 MVP',
     subtitle: '一元一次方程',
@@ -21,31 +29,7 @@ export const linearEquationLesson: AlgebraLesson = {
     stepGapFrames: 28,
     answerHoldFrames: 60
   },
-  steps: [
-    {
-      id: 's1',
-      expression: '2(x+3)=14',
-      kind: 'write'
-    },
-    {
-      id: 's2',
-      expression: '2x+6=14',
-      guide: 'expand',
-      note: '展开括号',
-      kind: 'expand'
-    },
-    {
-      id: 's3',
-      expression: '2x=8',
-      guide: 'move',
-      note: '两边同时减去 6',
-      kind: 'move'
-    },
-    {
-      id: 's4',
-      expression: 'x=4',
-      note: '两边同时除以 2',
-      kind: 'answer'
-    }
-  ]
+  steps: generatedProblem.problem.steps
 };
+
+export const linearEquationLesson = normalizeLessonWithTemplate(rawLinearEquationLesson);

@@ -1,4 +1,4 @@
-import type {CSSProperties} from 'react';
+import {forwardRef, type CSSProperties} from 'react';
 
 import {renderMathExpression} from '../utils/katex';
 
@@ -9,14 +9,19 @@ type Props = {
   style?: CSSProperties;
 };
 
-export const MathFormula = ({className, displayMode = false, expression, style}: Props) => {
-  return (
-    <div
-      className={className}
-      style={style}
-      dangerouslySetInnerHTML={{
-        __html: renderMathExpression(expression, displayMode)
-      }}
-    />
-  );
-};
+export const MathFormula = forwardRef<HTMLDivElement, Props>(
+  ({className, displayMode = false, expression, style}, ref) => {
+    return (
+      <div
+        className={className}
+        ref={ref}
+        style={style}
+        dangerouslySetInnerHTML={{
+          __html: renderMathExpression(expression, displayMode)
+        }}
+      />
+    );
+  }
+);
+
+MathFormula.displayName = 'MathFormula';

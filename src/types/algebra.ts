@@ -1,15 +1,46 @@
-export type AlgebraStepKind = 'write' | 'transform' | 'expand' | 'move' | 'answer';
-export type AlgebraStepGuide = 'expand' | 'move';
+import type {AlgebraVisualAction, FormulaToken, PositionRef, TokenRef, VisualLine} from './visuals';
+
+export type StepKind = 'write' | 'transform' | 'expand' | 'move' | 'cancel' | 'answer';
+
+export type AlgebraStepKind = StepKind;
+
+export type StepPhaseConfig = {
+  introRatio: number;
+  actionRatio: number;
+  settleRatio: number;
+};
+
+export type PhaseFrameRange = {
+  from: number;
+  to: number;
+};
+
+export type StepPhaseRange = {
+  intro: PhaseFrameRange;
+  action: PhaseFrameRange;
+  settle: PhaseFrameRange;
+};
+
+export type StepPhaseRanges = StepPhaseRange;
 
 export type AlgebraStep = {
   id: string;
-  kind: AlgebraStepKind;
-  guide?: AlgebraStepGuide;
+  kind: StepKind;
+  latex: string;
   note?: string;
-  expression: string;
+  phaseConfig?: Partial<StepPhaseConfig>;
+  expression?: string;
+  tokenMap?: FormulaToken[];
+  visualActions?: AlgebraVisualAction[];
 };
 
 export type LessonStep = AlgebraStep;
+
+export type AlgebraProblem = {
+  answer: string;
+  equation: string;
+  steps: AlgebraStep[];
+};
 
 export type LessonPacing = {
   introFrames: number;
@@ -40,3 +71,15 @@ export type AlgebraLesson = {
   steps: AlgebraStep[];
   pacing: LessonPacing;
 };
+
+export type {
+  AlgebraVisualAction,
+  AnchorRef,
+  AnchorRole,
+  FormulaToken,
+  PositionRef,
+  TokenRef,
+  VisualActionType,
+  VisualLine,
+  VisualRef
+} from './visuals';

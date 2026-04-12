@@ -1,4 +1,6 @@
 import type {AlgebraLesson, AlgebraStep} from '../types/algebra';
+import {hasVisualAction} from './actionResolver';
+import {normalizeStepWithTemplate} from './templates';
 
 export type StepTimelineEntry = {
   id: string;
@@ -23,17 +25,25 @@ const getVisibleLatexLength = (expression: string) => {
 };
 
 export const getStepDuration = (step: AlgebraStep) => {
-  let duration = 40 + getVisibleLatexLength(step.expression) * 2;
+  const normalizedStep = normalizeStepWithTemplate(step);
+  let duration = 40 + getVisibleLatexLength(normalizedStep.latex) * 2;
 
-  if (step.note?.trim()) {
+  if (normalizedStep.note?.trim()) {
     duration += 15;
   }
 
-  if (step.kind === 'expand' || step.kind === 'move' || step.kind === 'transform') {
+  if (
+    normalizedStep.kind === 'transform' ||
+    normalizedStep.kind === 'cancel' ||
+    hasVisualAction(normalizedStep, 'expand') ||
+    hasVisualAction(normalizedStep, 'move') ||
+    hasVisualAction(normalizedStep, 'cancel') ||
+    hasVisualAction(normalizedStep, 'highlight')
+  ) {
     duration += 20;
   }
 
-  if (step.kind === 'answer') {
+  if (normalizedStep.kind === 'answer' || hasVisualAction(normalizedStep, 'answer')) {
     duration += 40;
   }
 
@@ -91,7 +101,8 @@ export const getStepStartFrame = (lesson: AlgebraLesson, index: number) => {
 
 export const getAnswerStartFrame = (lesson: AlgebraLesson) => {
   const timeline = buildStepTimeline(lesson.steps);
-  const answerEntry = [...timeline.steps].reverse().find((entry) => entry.kind === 'answer');
+  const answerStep = [...lesson.steps].reverse().find((step) => hasVisualAction(step, 'answer') || step.kind === 'answer');
+  const answerEntry = answerStep ? timeline.steps.find((entry) => entry.id === answerStep.id) : undefined;
 
   if (answerEntry) {
     return lesson.pacing.introFrames + answerEntry.from;
