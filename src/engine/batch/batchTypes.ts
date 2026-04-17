@@ -164,6 +164,8 @@ export type BatchContentProgrammingPlan = {
 
 export type BatchOutputAssetPaths = {
   audioTrack?: string;
+  coverHtml: string;
+  coverPng?: string;
   html: string;
   mp4?: string;
   productEntry: string;

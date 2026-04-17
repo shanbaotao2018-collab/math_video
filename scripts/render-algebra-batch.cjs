@@ -377,8 +377,19 @@ const main = async () => {
       teachingScript: productEntry.teachingScript,
       videoHook: productEntry.videoHook
     });
+    const coverHtml = productEntry.publishingPack
+      ? integration.buildCoverHtml({
+          equation: productEntry.normalizedEquation,
+          familyLabel: productEntry.family.label,
+          publishingPack: productEntry.publishingPack
+        })
+      : undefined;
 
     writeText(resolveOutputPath(episodePlan.assetPaths.html), html);
+    if (coverHtml) {
+      writeText(resolveOutputPath(episodePlan.assetPaths.coverHtml), coverHtml);
+      assetPaths.coverHtml = episodePlan.assetPaths.coverHtml;
+    }
     writeText(
       resolveOutputPath(episodePlan.assetPaths.timelineHtml),
       `<!DOCTYPE html><meta charset="utf-8"><script>location.replace(${JSON.stringify('preview.html?view=timeline')});</script>`
@@ -442,6 +453,16 @@ const main = async () => {
           const frameDir = path.join(episodeDir, 'frames');
           fs.rmSync(frameDir, {force: true, recursive: true});
           ensureDir(frameDir);
+          if (coverHtml && episodePlan.assetPaths.coverPng) {
+            renderScreenshot({
+              chromePath,
+              outputPath: resolveOutputPath(episodePlan.assetPaths.coverPng),
+              url: pathToFileURL(resolveOutputPath(episodePlan.assetPaths.coverHtml)).href,
+              viewport
+            });
+            assetPaths.coverPng = episodePlan.assetPaths.coverPng;
+          }
+
           const keyframeResult = renderKeyframes({
             chromePath,
             frameDir,

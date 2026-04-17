@@ -47,6 +47,7 @@ export {
 export {
   buildSubtitleCuePlan,
   buildEmphasisPlan,
+  buildCoverHtml,
   buildRhythmPlan,
   buildVideoHtml,
   buildVideoRenderPlan,
@@ -65,6 +66,10 @@ export {
   type EmphasisSource,
   type PublishingCoverFrame,
   type PublishingCoverFrameSource,
+  type PublishingCoverMode,
+  type PublishingCoverStrategy,
+  type PublishingCoverContentGoal,
+  type PublishingCoverRecommendedUseCase,
   type PublishingPack,
   type PublishingSeriesContext,
   type PublishingSeriesInfo,

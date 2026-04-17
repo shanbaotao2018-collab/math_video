@@ -1,4 +1,5 @@
 export {buildVideoHtml} from './buildVideoHtml';
+export {buildCoverHtml} from './buildCoverHtml';
 export {buildEmphasisPlan} from './buildEmphasisPlan';
 export {buildPublishingPack} from './buildPublishingPack';
 export {buildRhythmPlan} from './buildRhythmPlan';
@@ -16,6 +17,10 @@ export type {EmphasisCue, EmphasisKind, EmphasisPlan, EmphasisSource} from './em
 export type {
   PublishingCoverFrame,
   PublishingCoverFrameSource,
+  PublishingCoverMode,
+  PublishingCoverStrategy,
+  PublishingCoverContentGoal,
+  PublishingCoverRecommendedUseCase,
   PublishingPack,
   PublishingSeriesContext,
   PublishingSeriesInfo

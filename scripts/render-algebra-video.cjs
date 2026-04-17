@@ -11,6 +11,7 @@ const {
 
 const COMPILED_ROOT = '/tmp/math-video-video';
 const COMPILED_ENTRY_PATH = path.join(COMPILED_ROOT, 'engine/integration/buildAlgebraProductEntry.js');
+const COMPILED_COVER_HTML_PATH = path.join(COMPILED_ROOT, 'engine/render/buildCoverHtml.js');
 const COMPILED_RENDER_PLAN_PATH = path.join(COMPILED_ROOT, 'engine/render/buildVideoRenderPlan.js');
 const COMPILED_VIDEO_HTML_PATH = path.join(COMPILED_ROOT, 'engine/render/buildVideoHtml.js');
 const COMPILED_SUBTITLE_CUE_PATH = path.join(COMPILED_ROOT, 'engine/render/buildSubtitleCuePlan.js');
@@ -35,6 +36,7 @@ const loadModuleExport = (modulePath, exportName) => {
 };
 
 const buildAlgebraProductEntry = loadModuleExport(COMPILED_ENTRY_PATH, 'buildAlgebraProductEntry');
+const buildCoverHtml = loadModuleExport(COMPILED_COVER_HTML_PATH, 'buildCoverHtml');
 const buildVideoRenderPlan = loadModuleExport(COMPILED_RENDER_PLAN_PATH, 'buildVideoRenderPlan');
 const buildVideoHtml = loadModuleExport(COMPILED_VIDEO_HTML_PATH, 'buildVideoHtml');
 const serializeSubtitleCuePlanToSrt = loadModuleExport(COMPILED_SUBTITLE_CUE_PATH, 'serializeSubtitleCuePlanToSrt');
@@ -265,6 +267,8 @@ const main = async () => {
 
   const basename = `algebra-video-${slugify(productEntry.normalizedEquation)}`;
   const htmlPath = path.join(process.cwd(), 'out', `${basename}.html`);
+  const coverHtmlPath = path.join(process.cwd(), 'out', `${basename}.cover.html`);
+  const coverPngPath = path.join(process.cwd(), 'out', `${basename}.cover.png`);
   const timelinePath = path.join(process.cwd(), 'out', `${basename}-timeline.html`);
   const timelineScreenshotPath = path.join(process.cwd(), 'out', `${basename}-timeline.png`);
   const renderPlanPath = path.join(process.cwd(), 'out', `${basename}.render-plan.json`);
@@ -285,6 +289,16 @@ const main = async () => {
   const voicedMp4Path = path.join(process.cwd(), 'out', `${basename}.voiced.mp4`);
 
   fs.writeFileSync(htmlPath, html);
+  if (productEntry.publishingPack) {
+    fs.writeFileSync(
+      coverHtmlPath,
+      buildCoverHtml({
+        equation: productEntry.normalizedEquation,
+        familyLabel: productEntry.family.label,
+        publishingPack: productEntry.publishingPack
+      })
+    );
+  }
   fs.writeFileSync(
     timelinePath,
     `<!DOCTYPE html><meta charset="utf-8"><script>location.replace(${JSON.stringify(path.basename(htmlPath) + '?view=timeline')});</script>`
@@ -340,6 +354,9 @@ const main = async () => {
   const chromePath = resolveChromePath();
 
   console.log(`[video] preview html: ${htmlPath}`);
+  if (productEntry.publishingPack) {
+    console.log(`[video] cover html: ${coverHtmlPath}`);
+  }
   console.log(`[video] timeline html: ${timelinePath}`);
   console.log(`[video] render plan: ${renderPlanPath}`);
   if (productEntry.publishingPack) {
@@ -362,11 +379,21 @@ const main = async () => {
   }
 
   if (!chromePath) {
-    console.log('[video] chrome not found, skipped frame and mp4 export.');
+    console.log('[video] chrome not found, skipped cover png, frame and mp4 export.');
     return;
   }
 
   try {
+    if (productEntry.publishingPack) {
+      renderScreenshot({
+        chromePath,
+        outputPath: coverPngPath,
+        url: pathToFileURL(coverHtmlPath).href,
+        viewport
+      });
+      console.log(`[video] cover png: ${coverPngPath}`);
+    }
+
     renderScreenshot({
       chromePath,
       outputPath: timelineScreenshotPath,

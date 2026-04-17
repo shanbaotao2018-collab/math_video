@@ -16,6 +16,7 @@ import {
 } from '../batch';
 import {
   buildAlgebraProductEntry,
+  buildCoverHtml,
   buildCueSegmentTimeline,
   buildVoiceCuePlan,
   buildVideoRenderPlan,
@@ -26,7 +27,7 @@ import {
   resolveVoiceStrategyProfile,
   synthesizeVoiceCuePlan
 } from '../integration';
-import type {VoiceCuePlan} from '../render';
+import type {PublishingCoverMode, VoiceCuePlan} from '../render';
 import {ALGEBRA_EVALUATION_CASES, type AlgebraEvaluationCase} from './algebraEvaluationCases';
 
 const fs = require('node:fs');
@@ -34,6 +35,7 @@ const childProcess = require('node:child_process');
 
 const FFMPEG_PATH = '/opt/homebrew/bin/ffmpeg';
 const FFPROBE_PATH = '/opt/homebrew/bin/ffprobe';
+const VALID_COVER_MODES = new Set<PublishingCoverMode>(['hook_cover', 'mistake_cover', 'result_cover']);
 
 type FamilyStats = {
   passed: number;
@@ -73,6 +75,32 @@ const joinNarrations = (result: Awaited<ReturnType<typeof buildAlgebraProductEnt
 
 const isDedupeSubtitleFallback = (text: string) => {
   return /^第\d+步，先看公式变化。$/.test(text);
+};
+
+const normalizeCoverCompareText = (value?: string) =>
+  (value ?? '')
+    .replace(/\s+/g, '')
+    .replace(/[，。！？、；：,.!?;:"'`()（）【】\[\]…\-_]/g, '')
+    .toLowerCase();
+
+const hasDuplicateCoverCopy = (values: Array<string | undefined>) => {
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    const comparable = normalizeCoverCompareText(value);
+
+    if (!comparable) {
+      continue;
+    }
+
+    if (seen.has(comparable)) {
+      return true;
+    }
+
+    seen.add(comparable);
+  }
+
+  return false;
 };
 
 const hasVisibleNarrationDifference = (
@@ -636,6 +664,66 @@ const collectCaseIssues = async (evaluationCase: AlgebraEvaluationCase) => {
         } else if (coverShot && (timestampMs < coverShot.startMs || timestampMs >= coverShot.endMs)) {
           issues.push(`publishingPack coverFrame timestamp ${timestampMs} is not inside shot ${coverShot.shotId}`);
         }
+      }
+    }
+  }
+
+  if (result.videoRender?.renderable) {
+    const publishingPack = result.publishingPack;
+
+    if (!publishingPack) {
+      issues.push('cover asset missing because publishingPack is unavailable.');
+    } else {
+      const coverStrategy = publishingPack.coverStrategy;
+
+      if (!coverStrategy) {
+        issues.push('publishingPack coverStrategy missing.');
+      } else {
+        if (!VALID_COVER_MODES.has(coverStrategy.mode)) {
+          issues.push(`coverStrategy mode invalid: ${coverStrategy.mode}`);
+        }
+
+        if (!coverStrategy.mainTitle.trim()) {
+          issues.push('coverStrategy mainTitle missing.');
+        }
+
+        if (
+          hasDuplicateCoverCopy([
+            coverStrategy.badge,
+            coverStrategy.mainTitle,
+            coverStrategy.formulaText,
+            coverStrategy.subtitle
+          ])
+        ) {
+          issues.push('coverStrategy contains duplicate visible copy.');
+        }
+
+        const sourceTexts = [
+          publishingPack.coverText,
+          publishingPack.title,
+          result.videoHook?.text,
+          result.problem?.answer
+        ]
+          .map(normalizeCoverCompareText)
+          .filter(Boolean);
+        const mainTitleComparable = normalizeCoverCompareText(coverStrategy.mainTitle);
+        const alignsWithPublishingPack =
+          !mainTitleComparable ||
+          sourceTexts.some((sourceText) => sourceText.includes(mainTitleComparable) || mainTitleComparable.includes(sourceText));
+
+        if (!alignsWithPublishingPack) {
+          issues.push('coverStrategy mainTitle is not aligned with publishingPack/videoHook/result sources.');
+        }
+      }
+
+      const coverHtml = buildCoverHtml({
+        equation: result.normalizedEquation,
+        familyLabel: result.family.label,
+        publishingPack
+      });
+
+      if (!coverHtml.includes('class="math-cover') || !coverHtml.includes('data-cover-mode=')) {
+        issues.push('cover html asset missing required cover markers.');
       }
     }
   }
@@ -1699,6 +1787,8 @@ const collectBatchProductionIssues = async () => {
     seenOutputDirs.add(episode.outputDir);
 
     const requiredAssetPaths = [
+      episode.assetPaths.coverHtml,
+      episode.assetPaths.coverPng,
       episode.assetPaths.html,
       episode.assetPaths.productEntry,
       episode.assetPaths.publishing,
@@ -1763,6 +1853,20 @@ const collectBatchProductionIssues = async () => {
 
     if (!publishingPack.coverText.trim() || publishingPack.hashtags.length < 2) {
       issues.push(`publishingPack publish assets incomplete for ${datasetEquation.equation}`);
+    }
+
+    if (!VALID_COVER_MODES.has(publishingPack.coverStrategy.mode) || !publishingPack.coverStrategy.mainTitle.trim()) {
+      issues.push(`batch coverStrategy incomplete for ${datasetEquation.equation}`);
+    }
+
+    const coverHtml = buildCoverHtml({
+      equation: result.normalizedEquation,
+      familyLabel: result.family.label,
+      publishingPack
+    });
+
+    if (!coverHtml.includes(`data-cover-mode="${publishingPack.coverStrategy.mode}"`)) {
+      issues.push(`batch cover html does not carry cover mode for ${datasetEquation.equation}`);
     }
 
     const renderPlan = result.shotPlan ? buildVideoRenderPlan(result.shotPlan) : undefined;
@@ -2013,6 +2117,17 @@ const collectBatchProductionIssues = async () => {
 
     if (executedEpisode.productEntry.appliedOutroStyle !== episodeProgramming.templateSnapshot.outroStyle) {
       issues.push(`appliedOutroStyle mismatch for ${episode.equation}`);
+    }
+
+    const expectedCoverMode =
+      episodeProgramming.recommendedUseCase === 'mistake_prevention'
+        ? 'mistake_cover'
+        : episodeProgramming.recommendedUseCase === 'exam_revision'
+          ? 'result_cover'
+          : 'hook_cover';
+
+    if (executedEpisode.productEntry.publishingPack?.coverStrategy.mode !== expectedCoverMode) {
+      issues.push(`coverStrategy mode not aligned to recommendedUseCase for ${episode.equation}`);
     }
 
     if (!executedEpisode.productEntry.teachingScript?.outroSummary?.includes('。')) {

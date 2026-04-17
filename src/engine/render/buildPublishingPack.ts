@@ -4,7 +4,11 @@ import type {EmphasisCue, EmphasisPlan} from './emphasisPlanTypes';
 import type {
   PublishingCoverFrame,
   PublishingCoverFrameSource,
+  PublishingCoverMode,
+  PublishingCoverStrategy,
   PublishingPack,
+  PublishingCoverContentGoal,
+  PublishingCoverRecommendedUseCase,
   PublishingSeriesContext
 } from './publishingPackTypes';
 import type {VideoRenderPlan, VideoRenderShot} from './videoRenderTypes';
@@ -15,12 +19,14 @@ type PublishingFamilyInfo = {
 };
 
 type BuildPublishingPackArgs = {
+  contentGoal?: PublishingCoverContentGoal;
   emphasisPlan?: EmphasisPlan;
   equation: string;
   family: PublishingFamilyInfo;
   presentationMode: string;
   problem: AlgebraProblem;
   qualityTier: string;
+  recommendedUseCase?: PublishingCoverRecommendedUseCase;
   renderPlan?: VideoRenderPlan;
   series?: PublishingSeriesContext;
   teachingPersona: TeachingPersona;
@@ -107,23 +113,28 @@ const midpoint = (shot: VideoRenderShot) => {
   return Math.min(shot.endMs - 1, shot.startMs + Math.floor((shot.endMs - shot.startMs) / 2));
 };
 
+const COVER_FRAME_PRIORITY_BY_MODE: Record<PublishingCoverMode, EmphasisCue['kind'][]> = {
+  hook_cover: ['hook', 'mistake', 'result', 'rule'],
+  mistake_cover: ['mistake', 'hook', 'rule', 'result'],
+  result_cover: ['result', 'rule', 'hook', 'mistake']
+};
+
 const buildCoverFrame = (
   renderPlan: VideoRenderPlan | undefined,
-  emphasisPlan: EmphasisPlan | undefined
+  emphasisPlan: EmphasisPlan | undefined,
+  coverMode: PublishingCoverMode
 ): PublishingCoverFrame => {
   const shots = renderPlan?.shots ?? [];
   const shotById = new Map(shots.map((shot) => [shot.shotId, shot]));
-  const priorityCue =
-    getCueByKind(emphasisPlan, 'hook') ??
-    getCueByKind(emphasisPlan, 'mistake') ??
-    getCueByKind(emphasisPlan, 'result') ??
-    getCueByKind(emphasisPlan, 'rule');
+  const priorityCue = COVER_FRAME_PRIORITY_BY_MODE[coverMode]
+    .map((kind) => getCueByKind(emphasisPlan, kind))
+    .find(Boolean);
 
   if (priorityCue) {
     const alignedShot = shotById.get(priorityCue.shotId);
 
     return {
-      reason: '优先选择最能代表开头钩子或重点提醒的镜头。',
+      reason: `按 ${coverMode} 选择最能支撑封面主信息的镜头。`,
       source: getCoverFrameSource(priorityCue.kind),
       shotId: priorityCue.shotId,
       timestampMs: alignedShot ? midpoint(alignedShot) : priorityCue.startMs
@@ -183,6 +194,153 @@ const buildCoverText = (args: BuildPublishingPackArgs, hookText: string, answerT
   return [clampCopy(primary, 24), clampCopy(secondary, 18)].filter(Boolean).join('\n');
 };
 
+const splitCoverText = (coverText: string) =>
+  coverText
+    .split(/\r?\n/)
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+
+const normalizeCompareText = (value?: string) =>
+  normalizeText(value)
+    .replace(/[，。！？、；：,.!?;:"'`()（）【】\[\]…\-_]/g, '')
+    .toLowerCase();
+
+const pushUnique = (items: string[], value?: string) => {
+  const normalized = normalizeText(value);
+
+  if (!normalized) {
+    return;
+  }
+
+  const comparable = normalizeCompareText(normalized);
+
+  if (!items.some((item) => normalizeCompareText(item) === comparable)) {
+    items.push(normalized);
+  }
+};
+
+const selectFirst = (...values: Array<string | undefined>) => {
+  return values.map((value) => normalizeText(value)).find(Boolean) ?? '';
+};
+
+const withoutAnswerLead = (value?: string) => {
+  const normalized = normalizeText(value);
+
+  return /^答案[:：\s]/.test(normalized) ? '' : normalized;
+};
+
+const inferCoverMode = (args: BuildPublishingPackArgs, answerText: string): PublishingCoverMode => {
+  if (args.recommendedUseCase === 'mistake_prevention' || args.contentGoal === 'mistake') {
+    return 'mistake_cover';
+  }
+
+  if (args.recommendedUseCase === 'exam_revision' || args.contentGoal === 'exam_skill') {
+    return 'result_cover';
+  }
+
+  if (
+    args.recommendedUseCase === 'cold_start_reach' ||
+    args.recommendedUseCase === 'series_playlist' ||
+    args.contentGoal === 'collection' ||
+    args.contentGoal === 'hook'
+  ) {
+    return 'hook_cover';
+  }
+
+  if (args.videoHook?.style === 'mistake_first') {
+    return 'mistake_cover';
+  }
+
+  if (args.videoHook?.style === 'shortcut_first') {
+    return 'result_cover';
+  }
+
+  if (args.videoHook?.style === 'question_first') {
+    return 'hook_cover';
+  }
+
+  if (getCueByKind(args.emphasisPlan, 'mistake')) {
+    return 'mistake_cover';
+  }
+
+  if (answerText && getCueByKind(args.emphasisPlan, 'result')) {
+    return 'result_cover';
+  }
+
+  return 'hook_cover';
+};
+
+const buildCoverStrategy = (
+  args: BuildPublishingPackArgs,
+  hookText: string,
+  answerText: string,
+  coverText: string,
+  title: string
+): PublishingCoverStrategy => {
+  const mode = inferCoverMode(args, answerText);
+  const coverLines = splitCoverText(coverText);
+  const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
+  const resultCue = getCueByKind(args.emphasisPlan, 'result');
+  const badge =
+    mode === 'mistake_cover'
+      ? '易错点'
+      : mode === 'result_cover'
+        ? '最终答案'
+        : args.series?.episodeIndex
+          ? `第${args.series.episodeIndex}题`
+          : '先看这里';
+  const source =
+    coverLines[0]
+      ? 'cover_text'
+      : title
+        ? 'title'
+        : hookText
+          ? 'video_hook'
+          : answerText
+            ? 'answer'
+            : 'emphasis';
+  const modeTitle =
+    mode === 'mistake_cover'
+      ? selectFirst(coverLines[0], mistakeCue?.text, hookText, title, '这一步最容易错')
+      : mode === 'result_cover'
+        ? selectFirst(coverLines[0], resultCue?.text, title, answerText ? `答案 ${answerText}` : undefined, '最终答案在这一步')
+        : selectFirst(coverLines[0], title, hookText, `${args.family.label}一题讲清`);
+  const lines: string[] = [];
+
+  pushUnique(lines, clampCopy(modeTitle, 22));
+  pushUnique(
+    lines,
+    mode === 'result_cover'
+      ? answerText
+      : cleanLatexForCopy(args.equation)
+  );
+  pushUnique(
+    lines,
+    mode === 'mistake_cover'
+      ? selectFirst(mistakeCue?.text, withoutAnswerLead(coverLines[1]), '很多人这里会错')
+      : mode === 'result_cover'
+        ? '别再写成别的了'
+        : selectFirst(withoutAnswerLead(coverLines[1]), hookText)
+  );
+
+  const [mainTitle, formulaText, subtitle] = lines;
+
+  return {
+    badge,
+    ...(formulaText ? {formulaText: clampCopy(formulaText, 18)} : {}),
+    mainTitle: mainTitle || '这题先别急着算',
+    mode,
+    reason:
+      mode === 'mistake_cover'
+        ? '优先拦截易错点，提高停留判断速度。'
+        : mode === 'result_cover'
+          ? '优先放大答案或捷径收益，适合考前复习点击。'
+          : '优先使用开头钩子，适合冷启动和系列入口。',
+    source,
+    ...(subtitle ? {subtitle: clampCopy(subtitle, 16)} : {})
+  };
+};
+
 const buildCaption = (args: BuildPublishingPackArgs, hookText: string, answerText: string) => {
   const ruleCue = getCueByKind(args.emphasisPlan, 'rule');
   const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
@@ -222,6 +380,9 @@ const buildHashtags = (args: BuildPublishingPackArgs) => {
 export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPack {
   const hookText = normalizeText(args.videoHook?.text);
   const answerText = cleanLatexForCopy(args.problem.answer);
+  const coverText = buildCoverText(args, hookText, answerText);
+  const title = buildTitle(args, hookText, answerText);
+  const coverStrategy = buildCoverStrategy(args, hookText, answerText, coverText, title);
   const hashtags = buildHashtags(args);
   const episodeNumber = args.series?.episodeIndex ? formatEpisodeNumber(args.series.episodeIndex) : undefined;
   const seriesId = args.series?.seriesId ?? `${args.family.id}-${args.qualityTier}`;
@@ -229,8 +390,9 @@ export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPa
 
   return {
     caption: buildCaption(args, hookText, answerText),
-    coverFrame: buildCoverFrame(args.renderPlan, args.emphasisPlan),
-    coverText: buildCoverText(args, hookText, answerText),
+    coverFrame: buildCoverFrame(args.renderPlan, args.emphasisPlan, coverStrategy.mode),
+    coverStrategy,
+    coverText,
     hashtags,
     series: {
       ...(args.series?.episodeIndex ? {episodeIndex: args.series.episodeIndex} : {}),
@@ -245,6 +407,6 @@ export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPa
       seriesId,
       seriesName
     },
-    title: buildTitle(args, hookText, answerText)
+    title
   };
 }

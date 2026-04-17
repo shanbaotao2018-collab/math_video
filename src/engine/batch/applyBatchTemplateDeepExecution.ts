@@ -214,6 +214,7 @@ export const applyBatchTemplateDeepExecution = (
     presentationMode: productEntry.presentationStrategy.id,
     problem: productEntry.problem,
     qualityTier: productEntry.qualityTier,
+    recommendedUseCase: templateSnapshot.useCase,
     renderPlan,
     series: productEntry.publishingPack?.series
       ? {

@@ -13,6 +13,27 @@ export type PublishingCoverFrame = {
   timestampMs?: number;
 };
 
+export type PublishingCoverMode = 'hook_cover' | 'mistake_cover' | 'result_cover';
+
+export type PublishingCoverContentGoal = 'collection' | 'exam_skill' | 'hook' | 'mistake' | 'teaching';
+
+export type PublishingCoverRecommendedUseCase =
+  | 'cold_start_reach'
+  | 'concept_building'
+  | 'exam_revision'
+  | 'mistake_prevention'
+  | 'series_playlist';
+
+export type PublishingCoverStrategy = {
+  badge: string;
+  formulaText?: string;
+  mainTitle: string;
+  mode: PublishingCoverMode;
+  reason: string;
+  source: 'answer' | 'cover_text' | 'emphasis' | 'title' | 'video_hook';
+  subtitle?: string;
+};
+
 export type PublishingSeriesInfo = {
   episodeIndex?: number;
   episodeKey: string;
@@ -34,6 +55,7 @@ export type PublishingSeriesContext = {
 export type PublishingPack = {
   caption: string;
   coverFrame: PublishingCoverFrame;
+  coverStrategy: PublishingCoverStrategy;
   coverText: string;
   hashtags: string[];
   series?: PublishingSeriesInfo;
