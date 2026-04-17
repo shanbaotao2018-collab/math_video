@@ -4,6 +4,7 @@ import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from
 import {AnswerOverlay} from '../components/AnswerOverlay';
 import {GuideLayer} from '../components/GuideLayer';
 import {BlackboardFrame} from '../components/BlackboardFrame';
+import {LinearSystemContextPanel, isLinearSystemPrompt} from '../components/LinearSystemContextPanel';
 import {MathFormula} from '../components/MathFormula';
 import {StepCard} from '../components/StepCard';
 import {SubtitleBar} from '../components/SubtitleBar';
@@ -11,6 +12,12 @@ import type {AlgebraLesson} from '../types/algebra';
 import {getFirstVisualAction, hasVisualAction} from '../utils/actionResolver';
 import type {GuideRect} from '../utils/anchors';
 import {getPhaseProgress, resolveStepPhaseRanges} from '../utils/phases';
+import {
+  getOperationAnswerExpression,
+  getOperationAnswerLabel,
+  getOperationAnswerVariant,
+  hasOperationDrivenGuide
+} from '../utils/renderOperations';
 import {buildStepTimeline, getAnswerStartFrame, getStepStartFrame} from '../utils/timing';
 
 type Props = {
@@ -115,8 +122,8 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
   const isActionPhaseActive = currentPhaseRanges
     ? currentStepFrame >= currentPhaseRanges.action.from && currentStepFrame <= currentPhaseRanges.action.to
     : false;
-  // The current formula-only layout fits 6 steps comfortably before the panel feels full.
-  const stepsPerPage = 6;
+  // Keep enough history visible for refined generator steps without crowding the answer area.
+  const stepsPerPage = lesson.layout === 'combined-main' ? 7 : 6;
   const currentPageStart =
     currentStepIndex >= 0 ? Math.floor(currentStepIndex / stepsPerPage) * stepsPerPage : 0;
   const visibleSteps =
@@ -140,8 +147,22 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
       return rectRecordsAreEqual(previousRects, nextRects) ? previousRects : nextRects;
     });
   });
+  const currentOperationType = currentStep?.operation?.type;
+  const previousStep = currentStepIndex > 0 ? lesson.steps[currentStepIndex - 1] : null;
+  const operationRects =
+    currentStep && hasOperationDrivenGuide(currentStep)
+      ? {
+          current: stepFormulaRects[currentStep.id],
+          currentExpression: currentStep.latex,
+          currentTokenMap: currentStep.tokenMap,
+          expression: previousStep?.latex ?? currentStep.latex,
+          previous: previousStep ? stepFormulaRects[previousStep.id] : undefined,
+          previousExpression: previousStep?.latex,
+          previousTokenMap: previousStep?.tokenMap
+        }
+      : undefined;
   const expandRects =
-    currentStep && hasVisualAction(currentStep, 'expand') && currentStepIndex > 0
+    currentStep && (hasVisualAction(currentStep, 'expand') || currentOperationType === 'expand_brackets') && currentStepIndex > 0
       ? {
           current: stepFormulaRects[currentStep.id],
           currentTokenMap: currentStep.tokenMap,
@@ -150,9 +171,10 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
         }
       : undefined;
   const currentMoveAction = getFirstVisualAction(currentStep, 'move');
-  const moveSourceStep = currentMoveAction && currentStepIndex > 0 ? lesson.steps[currentStepIndex - 1] : null;
+  const hasOperationMove = currentOperationType === 'move_term';
+  const moveSourceStep = (currentMoveAction || hasOperationMove) && currentStepIndex > 0 ? lesson.steps[currentStepIndex - 1] : null;
   const moveRects =
-    currentMoveAction && currentStep
+    (currentMoveAction || hasOperationMove) && currentStep
       ? {
           current: stepFormulaRects[currentStep.id],
           currentExpression: currentStep.latex,
@@ -164,6 +186,17 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
         }
       : undefined;
   const renderedSteps = visibleSteps.map(({step, index}) => {
+    const isActiveStep = currentStep?.id === step.id;
+    const isResultStep =
+      step.kind === 'answer' ||
+      step.operation?.type === 'collect_solution_branches' ||
+      step.operation?.type === 'collect_system_solution' ||
+      step.operation?.type === 'final_answer' ||
+      step.operation?.type === 'intersect_solution_set' ||
+      step.operation?.type === 'solve_inequality' ||
+      step.operation?.type === 'state_infinite_solutions' ||
+      step.operation?.type === 'state_no_real_solution' ||
+      step.operation?.type === 'state_no_solution';
     const currentMoveResult = currentMoveAction?.resultLatex ?? currentMoveAction?.result;
     const isCurrentMoveResultStep = currentStep?.id === step.id && Boolean(currentMoveResult);
     const moveResultProgress = isCurrentMoveResultStep
@@ -202,18 +235,31 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
     return (
       <StepCard
         key={step.id}
+        active={currentStep?.id === step.id}
         ref={(element) => setStepFormulaElement(step.id, element)}
         step={displayStep}
         index={index}
         style={{
-          fontSize: lesson.layout === 'combined-main' ? '46px' : undefined,
-          opacity: opacity * moveResultProgress,
-          transform: `translateY(${translateY}px)`
+          fontSize: lesson.layout === 'combined-main' ? '42px' : undefined,
+          opacity: opacity * moveResultProgress * (isResultStep ? 0.18 : isActiveStep ? 1 : 0.34),
+          transform: `translateY(${translateY}px) scale(${isActiveStep ? 1 : 0.96})`
         }}
       />
     );
   });
-  const answerStep = lesson.steps.find((step) => hasVisualAction(step, 'answer'));
+  const answerStep = [...lesson.steps]
+    .reverse()
+    .find(
+      (step) =>
+        hasVisualAction(step, 'answer') ||
+        step.operation?.type === 'collect_solution_branches' ||
+        step.operation?.type === 'collect_system_solution' ||
+        step.operation?.type === 'final_answer' ||
+        step.operation?.type === 'intersect_solution_set' ||
+        step.operation?.type === 'state_no_real_solution' ||
+        step.operation?.type === 'state_no_solution' ||
+        step.operation?.type === 'state_infinite_solutions'
+    );
   const answerAction = getFirstVisualAction(answerStep, 'answer');
   const answerStepIndex = answerStep ? lesson.steps.findIndex((step) => step.id === answerStep.id) : -1;
   const answerStepEntry = answerStepIndex >= 0 ? stepTimeline.steps[answerStepIndex] : undefined;
@@ -227,21 +273,32 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
     : answerProgress;
   const answerOverlay = (
     <AnswerOverlay
-      label={lesson.labels.answerTag}
-      expression={answerAction?.expression ?? lesson.answer}
+      label={getOperationAnswerLabel(answerStep, lesson.labels.answerTag)}
+      expression={answerAction?.expression ?? getOperationAnswerExpression(answerStep) ?? lesson.answer}
+      variant={getOperationAnswerVariant(answerStep)}
       progress={answerSettleProgress}
     />
   );
-  const subtitleOverlay = currentStep ? (
+  const promptExpression = lesson.steps[0]?.latex ?? lesson.prompt;
+  const showLinearSystemContext = isLinearSystemPrompt(promptExpression);
+  const linearSystemContextPanel = showLinearSystemContext ? (
+    <LinearSystemContextPanel prompt={promptExpression} step={currentStep} />
+  ) : null;
+  const shouldShowSubtitle =
+    currentStep?.note?.trim() &&
+    currentPhaseRanges &&
+    currentStepFrame >= currentPhaseRanges.action.from + (currentPhaseRanges.action.to - currentPhaseRanges.action.from) * 0.42;
+  const subtitleOverlay = shouldShowSubtitle ? (
     <div
       style={{
         position: 'absolute',
-        left: 120,
-        right: 120,
-        bottom: 44
+        left: 180,
+        right: 180,
+        bottom: 42,
+        zIndex: 8
       }}
     >
-      <SubtitleBar text={currentStep.note ?? ''} />
+      <SubtitleBar text={currentStep?.note ?? ''} />
     </div>
   ) : null;
 
@@ -256,6 +313,7 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
         expandRects={expandRects}
         layout={lesson.layout}
         moveRects={moveRects}
+        operationRects={operationRects}
         progress={actionPhaseProgress}
         step={isActionPhaseActive ? currentStep : null}
       />
@@ -276,7 +334,12 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
                 position: 'relative'
               }}
             >
-              <MathFormula expression={lesson.prompt} className="combined-prompt-formula" displayMode />
+              <div className="combined-lesson-heading">
+                <div className="combined-kicker">{lesson.labels.subtitle}</div>
+                <h1 className="combined-title">{lesson.title}</h1>
+              </div>
+              <MathFormula expression={promptExpression} className="combined-prompt-formula" displayMode />
+              {linearSystemContextPanel}
               <div
                 style={{
                   display: 'flex',
@@ -312,7 +375,8 @@ export const LinearEquationLessonScene = ({lesson}: Props) => {
               <section className="panel chalk-panel">
                 <div className="section-label">{lesson.labels.problemSection}</div>
                 <div className="problem-title">{lesson.problemType}</div>
-                <MathFormula expression={lesson.prompt} className="problem-formula" displayMode />
+                <MathFormula expression={promptExpression} className="problem-formula" displayMode />
+                {linearSystemContextPanel}
               </section>
               <section className="panel chalk-panel">
                 <div className="section-label">{lesson.labels.strategySection}</div>

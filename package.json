@@ -5,8 +5,15 @@
   "description": "Junior algebra teaching video MVP built with Remotion, React, and TypeScript.",
   "scripts": {
     "dev": "remotion studio src/index.ts",
+    "batch": "tsc --outDir /tmp/math-video-batch --noEmit false --module NodeNext --moduleResolution NodeNext && node scripts/render-algebra-batch.cjs",
+    "delivery": "tsc --outDir /tmp/math-video-delivery --noEmit false --module NodeNext --moduleResolution NodeNext && node scripts/algebra-delivery-server.cjs",
+    "demo:qa": "tsc --outDir /tmp/math-video-demo-qa --noEmit false --module NodeNext --moduleResolution NodeNext && node /tmp/math-video-demo-qa/engine/qa/runAlgebraDemoQa.js",
+    "evaluate": "tsc --outDir /tmp/math-video-evaluation --noEmit false --module NodeNext --moduleResolution NodeNext && node /tmp/math-video-evaluation/engine/evaluation/runAlgebraEvaluation.js",
+    "product": "tsc --outDir /tmp/math-video-product --noEmit false --module NodeNext --moduleResolution NodeNext && node /tmp/math-video-product/cli/algebraProductCli.js",
+    "regression:operations": "tsc --outDir /tmp/math-video-operation-regression --noEmit false --module NodeNext --moduleResolution NodeNext && node /tmp/math-video-operation-regression/engine/regression/runOperationCoverageRegression.js",
     "render": "remotion render src/index.ts AlgebraLinearEquationMvp out/algebra-linear-equation-mvp.mp4",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "video": "tsc --outDir /tmp/math-video-video --noEmit false --module NodeNext --moduleResolution NodeNext && node scripts/render-algebra-video.cjs"
   },
   "dependencies": {
     "katex": "^0.16.22",

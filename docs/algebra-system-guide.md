@@ -297,6 +297,880 @@ buildEnhancedLessonProblem(equation, options)
 generateLessonVideoInput(equation, options)
 ```
 
+### 2.12 Unsupported & Degradation Strategy v1
+
+位置：
+
+- `src/engine/integration/buildEnhancedLessonProblem.ts`
+- `src/engine/integration/lessonBuildStatus.ts`
+- `src/engine/integration/index.ts`
+- `src/types/algebra.ts`
+
+作用：
+
+- 主流程统一返回 `supported`、`quality`、`reason`、`reasons`、`problem`、`report`。
+- `quality` 只允许：`full`、`partial`、`fallback`、`unsupported`。
+- `reason` 使用 `LessonBuildReason` 白名单，避免调用方依赖自由文本。
+- generator 不支持时不抛错，默认返回最小 fallback problem。
+- AI 失败时保留 generator/template 的可渲染结果，并通过 `report` 和质量字段表达降级。
+- tokenMap 缺失时继续走 Anchor fallback。
+- visualActions 缺失时继续走 Template 默认动作。
+
+fallback problem 最小结构：
+
+```json
+{
+  "title": "暂不支持的题型",
+  "question": "x^2=4",
+  "equation": "x^2=4",
+  "answer": "x^2=4",
+  "note": "当前题型暂不在自动推导支持范围内...",
+  "steps": [
+    {
+      "id": "fallback-s1",
+      "kind": "write",
+      "latex": "x^2=4",
+      "note": "当前题型暂不在自动推导支持范围内...",
+      "visualActions": []
+    }
+  ]
+}
+```
+
+四种结果形态示例：
+
+```ts
+// full: generator + AI/report + template 全部可用
+{
+  supported: true,
+  quality: 'full',
+  problem
+}
+
+// partial: AI 某阶段失败，但主流程返回可渲染 problem
+{
+  supported: true,
+  quality: 'partial',
+  reason: 'ai_stage_failed',
+  reasons: ['ai_stage_failed'],
+  problem,
+  report
+}
+
+// fallback: generator 不支持，主流程返回最小安全 problem
+{
+  supported: false,
+  quality: 'fallback',
+  reason: 'unsupported_equation_pattern',
+  reasons: ['unsupported_equation_pattern', 'fallback_problem_created'],
+  equation: 'x^2=4',
+  problem
+}
+
+// unsupported: 调用方关闭 fallback，只返回明确不支持状态
+{
+  supported: false,
+  quality: 'unsupported',
+  reason: 'unsupported_equation_pattern',
+  reasons: ['unsupported_equation_pattern'],
+  equation: 'x^2=4'
+}
+```
+
+### 2.13 Generator v2
+
+位置：
+
+- `src/engine/generator/parser.ts`
+- `src/engine/generator/transforms.ts`
+- `src/engine/generator/index.ts`
+
+新增支持范围：
+
+- `x/2+3=7`
+- `2(x+3)+4=18`
+- `3(x-2)+5=20`
+- `2x+3=x+8`
+
+Generator v2 仍只扩展数学步骤骨架，核心字段是 `latex`、`kind` 和可选 `note`。现有 `tokenMap` 只作为 Anchor 兼容的基础定位元数据保留；`visualActions`、AI 增强、Template、Phase 和 Render 仍由各自模块负责。新题型无法解析时仍返回 `supported: false`，由主流程的 unsupported / fallback 策略继续处理。
+
+样例骨架：
+
+```ts
+// x/2+3=7
+[
+  {kind: 'write', latex: '\\frac{x}{2}+3=7'},
+  {kind: 'move', latex: '\\frac{x}{2}=7-3', note: '两边同时减去 3'},
+  {kind: 'transform', latex: '\\frac{x}{2}=4', note: '计算右边'},
+  {kind: 'transform', latex: 'x=4\\cdot 2', note: '两边同时乘以 2'},
+  {kind: 'transform', latex: 'x=8', note: '计算乘法'},
+  {kind: 'answer', latex: 'x=8', note: '得到答案'}
+]
+
+// 2(x+3)+4=18
+[
+  {kind: 'write', latex: '2(x+3)+4=18'},
+  {kind: 'expand', latex: '2x+6+4=18', note: '展开括号'},
+  {kind: 'transform', latex: '2x+10=18', note: '合并常数项'},
+  {kind: 'move', latex: '2x=18-10', note: '两边同时减去 10'},
+  {kind: 'transform', latex: '2x=8', note: '计算右边'},
+  {kind: 'transform', latex: 'x=8\\div 2', note: '两边同时除以 2'},
+  {kind: 'answer', latex: 'x=4', note: '得到答案'}
+]
+
+// 3(x-2)+5=20
+[
+  {kind: 'write', latex: '3(x-2)+5=20'},
+  {kind: 'expand', latex: '3x-6+5=20', note: '展开括号'},
+  {kind: 'transform', latex: '3x-1=20', note: '合并常数项'},
+  {kind: 'move', latex: '3x=20+1', note: '两边同时加上 1'},
+  {kind: 'transform', latex: '3x=21', note: '计算右边'},
+  {kind: 'transform', latex: 'x=21\\div 3', note: '两边同时除以 3'},
+  {kind: 'answer', latex: 'x=7', note: '得到答案'}
+]
+
+// 2x+3=x+8
+[
+  {kind: 'write', latex: '2x+3=x+8'},
+  {kind: 'move', latex: '2x-x=8-3', note: '把含 x 的项移到左边，常数项移到右边'},
+  {kind: 'transform', latex: 'x=5', note: '合并同类项'},
+  {kind: 'answer', latex: 'x=5', note: '得到答案'}
+]
+```
+
+### 2.14 Step Granularity Refinement v1
+
+位置：
+
+- `src/engine/generator/index.ts`
+- `src/engine/generator/transforms.ts`
+- `docs/algebra-system-guide.md`
+
+作用：
+
+- 不扩大 parser 支持范围。
+- 将“合并同类项”“除以系数”“最终答案展示”拆成更自然的教学步骤。
+- 继续只产出步骤骨架字段：`latex`、`kind`、可选 `note`，并保留既有轻量 tokenMap 兼容。
+- 不修改 Template、Phase、Anchor、AI、Render 或 fallback。
+
+优化前后对比：
+
+```ts
+// 2x+3=x+8
+// before
+[
+  {kind: 'write', latex: '2x+3=x+8'},
+  {kind: 'move', latex: '2x-x=8-3', note: '把含 x 的项移到左边，常数项移到右边'},
+  {kind: 'answer', latex: 'x=5', note: '合并同类项，得到答案'}
+]
+
+// after
+[
+  {kind: 'write', latex: '2x+3=x+8'},
+  {kind: 'move', latex: '2x-x=8-3', note: '把含 x 的项移到左边，常数项移到右边'},
+  {kind: 'transform', latex: 'x=5', note: '合并同类项'},
+  {kind: 'answer', latex: 'x=5', note: '得到答案'}
+]
+
+// x/2+3=7
+// before
+[
+  {kind: 'write', latex: '\\frac{x}{2}+3=7'},
+  {kind: 'move', latex: '\\frac{x}{2}=7-3', note: '两边同时减去 3'},
+  {kind: 'transform', latex: '\\frac{x}{2}=4', note: '计算右边'},
+  {kind: 'transform', latex: 'x=4\\cdot 2', note: '两边同时乘以 2'},
+  {kind: 'answer', latex: 'x=8', note: '计算得到答案'}
+]
+
+// after
+[
+  {kind: 'write', latex: '\\frac{x}{2}+3=7'},
+  {kind: 'move', latex: '\\frac{x}{2}=7-3', note: '两边同时减去 3'},
+  {kind: 'transform', latex: '\\frac{x}{2}=4', note: '计算右边'},
+  {kind: 'transform', latex: 'x=4\\cdot 2', note: '两边同时乘以 2'},
+  {kind: 'transform', latex: 'x=8', note: '计算乘法'},
+  {kind: 'answer', latex: 'x=8', note: '得到答案'}
+]
+
+// 2(x+3)+4=18
+// before
+[
+  {kind: 'write', latex: '2(x+3)+4=18'},
+  {kind: 'expand', latex: '2x+6+4=18', note: '展开括号'},
+  {kind: 'transform', latex: '2x+10=18', note: '合并常数项'},
+  {kind: 'move', latex: '2x=18-10', note: '两边同时减去 10'},
+  {kind: 'transform', latex: '2x=8', note: '计算右边'},
+  {kind: 'answer', latex: 'x=4', note: '两边同时除以 2'}
+]
+
+// after
+[
+  {kind: 'write', latex: '2(x+3)+4=18'},
+  {kind: 'expand', latex: '2x+6+4=18', note: '展开括号'},
+  {kind: 'transform', latex: '2x+10=18', note: '合并常数项'},
+  {kind: 'move', latex: '2x=18-10', note: '两边同时减去 10'},
+  {kind: 'transform', latex: '2x=8', note: '计算右边'},
+  {kind: 'transform', latex: 'x=8\\div 2', note: '两边同时除以 2'},
+  {kind: 'answer', latex: 'x=4', note: '得到答案'}
+]
+```
+
+### 2.15 Render Quality Pass v1
+
+位置：
+
+- `src/scenes/LinearEquationLessonScene.tsx`
+- `src/components/ArrowGuide.tsx`
+- `src/components/ExpandGuideLayer.tsx`
+- `src/components/MoveGuideLayer.tsx`
+- `src/components/HighlightOverlay.tsx`
+- `src/components/StepCard.tsx`
+- `src/components/SubtitleBar.tsx`
+- `src/styles/global.css`
+- `src/utils/phases.ts`
+- `src/utils/timing.ts`
+- `src/data/linearEquationLesson.ts`
+
+作用：
+
+- 不修改 parser / generator 题型范围。
+- 不修改 AI / fallback 主流程。
+- 统一标题、主公式、步骤、note、guide、answer 的视觉层级。
+- 让 refined steps 更像课堂板书，而不是只列公式结果。
+
+视觉规范：
+
+- combined 画面顶部显示紧凑课程标题和题型标签。
+- 主公式优先使用第一步 LaTeX，避免 `x/2` 这类输入文本在主视觉里弱化为普通斜杠。
+- 当前步骤有左侧强调线和弱背景；answer 步骤使用暖色强调。
+- transform 保持中性板书状态；answer 使用最终结论卡片和更长 settle。
+- expand 和 move 使用同一 chalk-yellow guide 语言。
+- move 的箭头更细、更淡，继续让状态变化成为主表达。
+- note 只在有内容时出现，使用底部轻量条，不占用公式区和 guide 区。
+- answer step duration 和 answer hold 增加，给最终结论留出停留时间。
+
+渲染抽查：
+
+- `2(x+3)=14`：expand 帧中标题、主公式、展开步骤层级清晰；展开箭头可见但不压过公式。
+- `x/2+3=7`：主公式显示为 `\frac{x}{2}+3=7`；move 帧中状态变化清楚，note 位于底部且不遮挡公式。
+- `2x+3=x+8`：move 帧中箭头退为辅助，当前步骤和 note 共同表达“移项”；最终帧 answer 卡片突出 `x=5`，并保留更长停留。
+- `x^2=4`：fallback 帧可渲染，显示原题、最小步骤和说明 note，没有崩溃或空画面。
+
+### 2.16 DSL v2 + Generator v3 Planning
+
+位置：
+
+- `src/types/algebraDslV2.ts`
+- `src/types/algebra.ts`
+- `docs/algebra-system-guide.md`
+
+目标：
+
+- 不破坏现有 v1 主链路。
+- 在 `kind + latex + note` 之外补充更明确的数学操作语义。
+- 让 Generator v3 可以面向“代数操作”生成步骤，而不是只面向显示结果生成步骤。
+
+DSL v2 类型草案：
+
+```ts
+type AlgebraOperationTypeV2 =
+  | 'write_equation'
+  | 'move_term'
+  | 'expand_brackets'
+  | 'combine_like_terms'
+  | 'multiply_both_sides'
+  | 'divide_both_sides'
+  | 'simplify_expression'
+  | 'final_answer';
+
+type AlgebraStepV2 = {
+  id: string;
+  legacyKind: AlgebraStepKind;
+  operation: AlgebraOperationV2;
+  sourceLatex?: string;
+  targetLatex: string;
+  latex: string;
+  note?: string;
+  tokenMap?: FormulaToken[];
+  visualActions?: AlgebraVisualAction[];
+};
+
+type AlgebraProblemV2 = {
+  schemaVersion: 'algebra-dsl-v2-draft';
+  equation: string;
+  answer: string;
+  title?: string;
+  steps: AlgebraStepV2[];
+};
+```
+
+核心操作语义：
+
+```ts
+type AlgebraOperationV2 =
+  | {type: 'move_term'; termLatex?: string; fromSide?: 'left' | 'right'; toSide?: 'left' | 'right'; inverseTermLatex?: string}
+  | {type: 'expand_brackets'; factorLatex?: string; bracketLatex?: string}
+  | {type: 'combine_like_terms'; groups?: LikeTermGroupV2[]}
+  | {type: 'multiply_both_sides'; multiplierLatex?: string}
+  | {type: 'divide_both_sides'; divisorLatex?: string}
+  | {type: 'final_answer'; variableLatex: string; valueLatex?: string};
+```
+
+兼容迁移：
+
+- `AlgebraStep` v1 保持当前结构，继续服务 Template / Phase / Anchor / Token / AI / Render。
+- `AlgebraStepV2` 增加 `legacyKind`，让现有模板仍可按旧 kind 推导默认动作。
+- `latex` 保留为渲染主字段，`targetLatex` 表达本步骤结果，`sourceLatex` 表达上一步来源。
+- 当前新增 `toAlgebraStepV2Draft` 和 `toAlgebraProblemV2Draft`，可以把 v1 结果投影成 v2 草案结构。
+- Generator v3 初期可以同时输出 v1 problem 和 v2 draft；主流程继续消费 v1，调试面板或 AI prompt 可先试用 v2。
+
+v1 step 到 v2 step 的初始映射：
+
+| v1 kind / note | v2 operation | 说明 |
+| --- | --- | --- |
+| `write` | `write_equation` | 原题或当前方程展示 |
+| `expand` | `expand_brackets` | 括号展开 |
+| `move` | `move_term` | 移项，后续补 term/source/target |
+| `transform` + `合并` | `combine_like_terms` | 合并常数项、同类项 |
+| `transform` + `乘以` | `multiply_both_sides` | 去分母或等式两边同乘 |
+| `transform` + `除以` | `divide_both_sides` | 系数化为 1 |
+| `transform` 其他 | `simplify_expression` | 计算右边、计算乘法等普通化简 |
+| `answer` | `final_answer` | 最终结论 |
+
+Generator v3 优先支持范围：
+
+1. 一元一次不等式：
+   - `2x+3>7`
+   - `3(x-1)<=12`
+   - 重点补充“不等号方向”和“乘除负数变号”语义。
+2. 更复杂分式方程：
+   - `x/3+2=5`
+   - `(x+1)/2=4`
+   - `x/2+x/3=5`
+   - 重点补充通分、去分母、等式两边同乘。
+3. 多括号一元一次方程：
+   - `2(x+3)+3(x-1)=20`
+   - `4(x-2)-2(x+1)=10`
+   - 重点补充多次分配律和同类项分组。
+4. 两边含代数式的一元一次方程：
+   - `2(x+3)=x+8`
+   - `3x+2=2(x+5)`
+   - `2(x+1)+3=x+9`
+   - 重点补充展开、移项、合并同类项的稳定顺序。
+
+本轮不纳入：
+
+- 几何证明和图形题。
+- 函数图像题。
+- 需要坐标系、图形构造、判定定理或图像采样的题型。
+
+迁移计划：
+
+1. `v2-draft`：保留 v1 输出，新增 v2 类型和 v1->v2 适配器。
+2. `v2-shadow`：Generator 继续产出 v1，同时旁路产出 v2 steps，用测试和样例对齐。
+3. `template-aware-v2`：Template 优先读 `operation.type`，失败时回落到 `legacyKind`。
+4. `ai-prompt-v2`：AI prompt 使用 `operation` 而不是只看 `kind/latex`，让 note/token/action 更稳定。
+5. `generator-v3-native`：复杂代数题直接生成 v2 operations，再降级投影为 v1 兼容 problem。
+6. `render-v2`：渲染层逐步使用 `operation` 做更细粒度动作，但保留 v1 fallback。
+
+### 2.17 Template-aware v2
+
+位置：
+
+- `src/utils/templates.ts`
+- `docs/algebra-system-guide.md`
+
+目标：
+
+- 不切换现有主流程输出格式。
+- Template 仍输出 v1 `AlgebraStep`。
+- 模板选择优先读取 `step.operation.type`。
+- 当 step 没有显式 operation 时，用 `toAlgebraStepV2Draft` 从 v1 step 推断 operation。
+- operation 不可用或未覆盖时，继续回退到旧 `kind` 路径。
+
+operation 到模板行为的映射：
+
+| DSL v2 operation | template kind | 默认行为 |
+| --- | --- | --- |
+| `write_equation` | `write` | 无动作，补 write phase |
+| `expand_brackets` | `expand` | 高亮分配项，补展开箭头 |
+| `move_term` | `move` | 高亮移动项，状态变化为主，箭头为辅 |
+| `final_answer` | `answer` | 最终答案强调 |
+| `combine_like_terms` | `transform` | 弱默认，仅补 transform phase |
+| `multiply_both_sides` | `transform` | 弱默认，仅补 transform phase |
+| `divide_both_sides` | `transform` | 弱默认，仅补 transform phase |
+| `simplify_expression` | `transform` | 弱默认，仅补 transform phase |
+
+补全前后示例：
+
+```ts
+// input: legacy kind 还是 transform，但 v2 operation 表达真实数学动作
+{
+  id: 's2',
+  kind: 'transform',
+  latex: '2x+6=14',
+  operation: {type: 'expand_brackets'}
+}
+
+// after normalizeStepWithTemplate
+{
+  id: 's2',
+  kind: 'transform',
+  latex: '2x+6=14',
+  operation: {type: 'expand_brackets'},
+  phaseConfig: DEFAULT_PHASE_CONFIGS.expand,
+  visualActions: [
+    {type: 'highlight', target: 'source', anchor: {line: 'previous', role: 'distributor'}},
+    {type: 'expand', source: {line: 'previous', role: 'distributor'}, targets: {...}}
+  ]
+}
+```
+
+显式 visualActions 仍然优先：
+
+```ts
+{
+  id: 's4',
+  kind: 'transform',
+  latex: 'x=4',
+  operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '4'},
+  visualActions: [{type: 'highlight', target: 'custom'}]
+}
+```
+
+上面的 step 会使用 `final_answer` 的 phase，但不会覆盖调用方显式给出的 `visualActions`。
+
+### 2.18 Generator v3 Native Output Pilot
+
+位置：
+
+- `src/engine/generator/index.ts`
+- `src/types/algebraDslV2.ts`
+- `src/types/algebra.ts`
+- `docs/algebra-system-guide.md`
+
+目标：
+
+- 先让 generator 内部原生生成 DSL v2 operation。
+- 不切断现有 v1 `AlgebraProblem` 输出。
+- 对试点题型生成 `AlgebraProblemV2`，再投影回兼容 v1 problem。
+- 主流程、AI、fallback、render 仍可继续消费 v1 problem。
+
+新增入口：
+
+```ts
+generateAlgebraStepsV2Draft(equation)
+```
+
+返回：
+
+```ts
+{
+  supported: true,
+  native: true,
+  problem: AlgebraProblemV2,
+  legacyProblem: AlgebraProblem
+}
+```
+
+试点范围：
+
+- `2(x+3)+4=18`
+- `x/2+3=7`
+- `2x+3=x+8`
+
+native v2 示例：
+
+```ts
+// 2(x+3)+4=18
+[
+  {legacyKind: 'write', latex: '2(x+3)+4=18', operation: {type: 'write_equation'}},
+  {
+    legacyKind: 'expand',
+    latex: '2x+6+4=18',
+    operation: {type: 'expand_brackets', factorLatex: '2', bracketLatex: 'x+3'}
+  },
+  {
+    legacyKind: 'transform',
+    latex: '2x+10=18',
+    operation: {
+      type: 'combine_like_terms',
+      groups: [{category: 'constant', termsLatex: ['+6', '+4'], resultLatex: '+10'}]
+    }
+  },
+  {
+    legacyKind: 'move',
+    latex: '2x=18-10',
+    operation: {type: 'move_term', termLatex: '+10', inverseTermLatex: '-10', fromSide: 'left', toSide: 'right'}
+  },
+  {legacyKind: 'transform', latex: '2x=8', operation: {type: 'simplify_expression'}},
+  {legacyKind: 'transform', latex: 'x=8\\div 2', operation: {type: 'divide_both_sides', divisorLatex: '2'}},
+  {legacyKind: 'answer', latex: 'x=4', operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '4'}}
+]
+
+// x/2+3=7
+[
+  {legacyKind: 'write', latex: '\\frac{x}{2}+3=7', operation: {type: 'write_equation'}},
+  {
+    legacyKind: 'move',
+    latex: '\\frac{x}{2}=7-3',
+    operation: {type: 'move_term', termLatex: '+3', inverseTermLatex: '-3', fromSide: 'left', toSide: 'right'}
+  },
+  {legacyKind: 'transform', latex: '\\frac{x}{2}=4', operation: {type: 'simplify_expression'}},
+  {legacyKind: 'transform', latex: 'x=4\\cdot 2', operation: {type: 'multiply_both_sides', multiplierLatex: '2'}},
+  {legacyKind: 'transform', latex: 'x=8', operation: {type: 'simplify_expression'}},
+  {legacyKind: 'answer', latex: 'x=8', operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '8'}}
+]
+```
+
+投影回 v1 后：
+
+```ts
+// 2x+3=x+8
+[
+  {kind: 'write', latex: '2x+3=x+8', operation: {type: 'write_equation'}},
+  {kind: 'move', latex: '2x-x=8-3', operation: {type: 'move_term', termLatex: 'x', inverseTermLatex: '-x'}},
+  {kind: 'transform', latex: 'x=5', operation: {type: 'combine_like_terms', groups: [...]}},
+  {kind: 'answer', latex: 'x=5', operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '5'}}
+]
+```
+
+与旧 v1 -> v2 draft 适配路径的差异：
+
+- 后置适配只能从 `kind` 和 `note` 推断 operation 类型。
+- native v2 在生成数学步骤时就知道具体操作对象。
+- native v2 可以保留 `factorLatex`、`bracketLatex`、`termLatex`、`inverseTermLatex`、`groups`、`multiplierLatex`、`divisorLatex`。
+- 后置适配适合作为兼容兜底，native v2 才适合作为 Generator v3、AI prompt v2、render v2 的真实协议。
+
+### 2.19 AI Prompt v2
+
+位置：
+
+- `src/engine/ai/aiEnhancementTypes.ts`
+- `src/engine/ai/buildEnhancementPrompt.ts`
+- `src/engine/ai/buildTokenMapEnhancementPrompt.ts`
+- `src/engine/ai/buildVisualActionsEnhancementPrompt.ts`
+
+目标：
+
+- 不改变 orchestrator / parse / validate / merge / render 主链路。
+- note、tokenMap、visualActions 三类 prompt 继续接收 v1 `AlgebraStep`，但当 step 带有 DSL v2 `operation` 时，prompt 输入优先携带 operation 语义。
+- 当 step 没有 operation 时，输入仍保持 legacy `{id, kind, latex}` 形态。
+- prompt 只携带 `operation.type` 和相关数学字段，不携带渲染状态、已合并增强结果或内部调试字段。
+
+prompt v2 step 输入结构：
+
+```ts
+{
+  id: 's4',
+  kind: 'move',
+  latex: '2x=18-10',
+  operation: {
+    type: 'move_term',
+    termLatex: '+10',
+    inverseTermLatex: '-10',
+    fromSide: 'left',
+    toSide: 'right'
+  }
+}
+```
+
+三类 prompt 的 v2 输入示例：
+
+```ts
+// note prompt: 直接知道这是合并常数项，不需要从 transform + latex 猜
+{
+  question: '2(x+3)+4=18',
+  steps: [
+    {
+      id: 's3',
+      kind: 'transform',
+      latex: '2x+10=18',
+      operation: {
+        type: 'combine_like_terms',
+        groups: [{category: 'constant', termsLatex: ['+6', '+4'], resultLatex: '+10'}]
+      }
+    }
+  ]
+}
+
+// tokenMap prompt: 直接知道要标注被移项对象和结果项
+{
+  question: 'x/2+3=7',
+  steps: [
+    {
+      id: 's2',
+      kind: 'move',
+      latex: '\\frac{x}{2}=7-3',
+      operation: {
+        type: 'move_term',
+        termLatex: '+3',
+        inverseTermLatex: '-3',
+        fromSide: 'left',
+        toSide: 'right'
+      }
+    }
+  ]
+}
+
+// visualActions prompt: 直接知道展开动作的乘数和括号对象
+{
+  question: '2(x+3)+4=18',
+  steps: [
+    {
+      id: 's2',
+      kind: 'expand',
+      latex: '2x+6+4=18',
+      operation: {
+        type: 'expand_brackets',
+        factorLatex: '2',
+        bracketLatex: 'x+3'
+      }
+    }
+  ]
+}
+```
+
+operation 对 AI 的价值：
+
+- `move_term` 不再需要 AI 从 `kind: move` 推断到底是移常数项还是移含 x 的项。
+- `expand_brackets` 明确给出乘数和括号内部表达式，减少把普通 transform 误判成展开的概率。
+- `combine_like_terms` 通过 `groups` 告诉 AI 哪些项参与合并，以及合并结果是什么。
+- `multiply_both_sides` / `divide_both_sides` 明确是等式两边同乘或同除，不再只依赖 note 文案。
+- `final_answer` 明确变量和值，答案强调动作和 token 标注更稳定。
+
+这一步放在 native v2 generator 之后做，是因为 generator 已经能在数学变换发生时保留真实 operation 字段；AI prompt v2 现在消费这些字段，可以先提升 note / token / action 的稳定性，同时保持后续 render v2 仍有明确的数据基础。
+
+### 2.20 Render v2 Semantic Pass
+
+位置：
+
+- `src/scenes/LinearEquationLessonScene.tsx`
+- `src/components/GuideLayer.tsx`
+- `src/components/OperationSemanticOverlay.tsx`
+- `src/components/StepCard.tsx`
+- `src/utils/anchors.ts`
+- `src/utils/renderOperations.ts`
+- `src/styles/global.css`
+
+目标：
+
+- 不移除现有 `visualActions` 渲染逻辑。
+- Render 层开始弱接入 DSL v2 `operation.type`。
+- 有 `operation` 时优先用 operation 字段和 tokenMap 定位元素，找不到再回退到原有 anchor 规则。
+- 不改 generator / AI / template 主逻辑。
+
+operation-aware 分支：
+
+- `expand_brackets`：在没有显式 expand action 时可生成默认展开箭头；已有 expand action 时保留动作，但用 operation 语义稳定 source / target。
+- `move_term`：使用 `operation.termLatex` 修正 move / highlight / fade_out 的移动对象，先从 tokenMap 的文本或 role 定位，再回退 anchor。
+- `combine_like_terms`：根据 `operation.groups` 高亮上一行参与合并的项，并强调当前行合并后的结果项。
+- `multiply_both_sides` / `divide_both_sides`：显示“两边同乘 / 同除”的轻量操作提示，并强调当前操作因子位置。
+- `final_answer`：把 `operation.variableLatex + valueLatex` 作为答案表达兜底，并增强最终步骤的视觉强调。
+
+示例：
+
+```ts
+// move_term: visualActions 仍可存在，但移动对象由 operation.termLatex 修正
+{
+  kind: 'move',
+  latex: '2x=18-10',
+  operation: {
+    type: 'move_term',
+    termLatex: '+10',
+    inverseTermLatex: '-10',
+    fromSide: 'left',
+    toSide: 'right'
+  },
+  tokenMap: [
+    {id: 's4-right-value', text: '18', role: 'right_value'},
+    {id: 's4-result-term', text: '-10', role: 'result_term'}
+  ]
+}
+
+// expand_brackets: 没有显式 visualActions 时也能从 operation 生成展开引导
+{
+  kind: 'expand',
+  latex: '2x+6+4=18',
+  operation: {
+    type: 'expand_brackets',
+    factorLatex: '2',
+    bracketLatex: 'x+3'
+  }
+}
+```
+
+与 visualActions-only 的差异：
+
+- visualActions-only 只知道“做 move / expand 动画”，具体数学对象通常依赖 role 和 anchor 兜底。
+- operation-aware 知道“移动的是 `+10`”“展开的是 `2(x+3)`”“合并的是 `+6` 和 `+4`”，因此定位和强调更贴近数学语义。
+- visualActions 仍然是显式动画 DSL；operation 是语义修正和缺省提示来源。两者并存，render 不反向修改 step 数据。
+
+Render v2 是当前阶段的关键升级点，因为前面的 generator v3 native output 和 AI prompt v2 已经把数学语义传到主链路，但最终用户感知发生在画面里。Render 开始读 operation 后，语义不再只停留在数据层，而能直接改善动画路径、元素强调和教学节奏。
+
+### 2.21 Generator v3 Expansion Phase 2
+
+位置：
+
+- `src/types/algebraDslV2.ts`
+- `src/engine/generator/parser.ts`
+- `src/engine/generator/transforms.ts`
+- `src/engine/generator/index.ts`
+- `src/utils/templates.ts`
+- `src/engine/ai/aiEnhancementTypes.ts`
+- `src/engine/ai/buildEnhancementPrompt.ts`
+- `src/engine/ai/buildTokenMapEnhancementPrompt.ts`
+- `src/engine/ai/buildVisualActionsEnhancementPrompt.ts`
+- `src/utils/renderOperations.ts`
+- `src/components/OperationSemanticOverlay.tsx`
+- `docs/algebra-system-guide.md`
+
+新增支持范围：
+
+- 一元一次不等式：`2x+3>7`、`3(x-1)<=12`
+- 更复杂分式方程：`(x+1)/2=4`、`x/2+x/3=5`
+- 多括号一元一次方程：`2(x+3)+3(x-1)=20`
+
+新增 operation：
+
+- `clear_denominator`：表达去分母或两边同乘最小公倍数。
+- `solve_inequality`：表达不等式最终解集。
+- `flip_inequality_sign`：预留负数乘除导致不等号变号的语义。
+
+native v2 示例：
+
+```ts
+// 一元一次不等式: 2x+3>7
+[
+  {legacyKind: 'write', latex: '2x+3>7', operation: {type: 'write_equation'}},
+  {legacyKind: 'move', latex: '2x>7-3', operation: {type: 'move_term', termLatex: '+3', inverseTermLatex: '-3'}},
+  {legacyKind: 'transform', latex: '2x>4', operation: {type: 'simplify_expression'}},
+  {legacyKind: 'transform', latex: 'x>4\\div 2', operation: {type: 'divide_both_sides', divisorLatex: '2'}},
+  {legacyKind: 'answer', latex: 'x>2', operation: {type: 'solve_inequality', variableLatex: 'x', relationLatex: '>', valueLatex: '2'}}
+]
+
+// 分式方程: x/2+x/3=5
+[
+  {legacyKind: 'write', latex: '\\frac{x}{2}+\\frac{x}{3}=5', operation: {type: 'write_equation'}},
+  {legacyKind: 'transform', latex: '3x+2x=30', operation: {type: 'clear_denominator', denominatorsLatex: ['2', '3'], multiplierLatex: '6'}},
+  {legacyKind: 'transform', latex: '5x=30', operation: {type: 'combine_like_terms', groups: [{category: 'variable', termsLatex: ['3x', '+2x'], resultLatex: '5x'}]}},
+  {legacyKind: 'transform', latex: 'x=30\\div 5', operation: {type: 'divide_both_sides', divisorLatex: '5'}},
+  {legacyKind: 'answer', latex: 'x=6', operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '6'}}
+]
+
+// 多括号方程: 2(x+3)+3(x-1)=20
+[
+  {legacyKind: 'write', latex: '2(x+3)+3(x-1)=20', operation: {type: 'write_equation'}},
+  {legacyKind: 'expand', latex: '2x+6+3x-3=20', operation: {type: 'expand_brackets', expansions: [{factorLatex: '2', bracketLatex: 'x+3'}, {factorLatex: '3', bracketLatex: 'x-1'}]}},
+  {legacyKind: 'transform', latex: '5x+3=20', operation: {type: 'combine_like_terms', groups: [{category: 'variable', termsLatex: ['2x', '+3x'], resultLatex: '5x'}, {category: 'constant', termsLatex: ['+6', '-3'], resultLatex: '+3'}]}},
+  {legacyKind: 'move', latex: '5x=20-3', operation: {type: 'move_term', termLatex: '+3', inverseTermLatex: '-3'}},
+  {legacyKind: 'transform', latex: '5x=17', operation: {type: 'simplify_expression'}},
+  {legacyKind: 'transform', latex: 'x=17\\div 5', operation: {type: 'divide_both_sides', divisorLatex: '5'}},
+  {legacyKind: 'answer', latex: 'x=\\frac{17}{5}', operation: {type: 'final_answer', variableLatex: 'x', valueLatex: '\\frac{17}{5}'}}
+]
+```
+
+投影回 v1 后：
+
+```ts
+// v1 仍是 AlgebraStep，但保留 operation，主流程和 render 可继续消费
+[
+  {kind: 'write', latex: '2x+3>7', operation: {type: 'write_equation'}},
+  {kind: 'move', latex: '2x>7-3', operation: {type: 'move_term', termLatex: '+3'}},
+  {kind: 'transform', latex: '2x>4', operation: {type: 'simplify_expression'}},
+  {kind: 'transform', latex: 'x>4\\div 2', operation: {type: 'divide_both_sides', divisorLatex: '2'}},
+  {kind: 'answer', latex: 'x>2', operation: {type: 'solve_inequality', variableLatex: 'x', relationLatex: '>', valueLatex: '2'}}
+]
+```
+
+这轮扩题型的核心不是“多几个 parser 正则”，而是让新题型从生成阶段就带着 `clear_denominator`、`combine_like_terms`、`solve_inequality` 等语义进入 Template / AI Prompt / Render。这样新增题型不只是能算出答案，也能继承现有语义驱动动画和降级策略。
+
+### 2.22 Operation Coverage & Regression Suite v1
+
+位置：
+
+- `src/engine/regression/operationCoverage.ts`
+- `src/engine/regression/runOperationCoverageRegression.ts`
+- `package.json`
+- `docs/algebra-system-guide.md`
+
+目标：
+
+- 为当前 DSL v2 operation 建立覆盖表。
+- 为 Generator native v2、v2 -> v1 投影、Template-aware v2、AI Prompt v2、Render v2、Fallback 建立轻量回归护栏。
+- 不引入测试框架或新库。
+
+运行：
+
+```bash
+npm run regression:operations
+```
+
+检查内容：
+
+- generator 是否 `supported` 且 `native` 标记符合预期。
+- native v2 steps 是否包含预期 operation。
+- v2 -> v1 投影是否保留 operation 且 step 数一致。
+- Template 是否能通过 `OPERATION_TEMPLATE_KIND` 识别每个 operation。
+- note / tokenMap / visualActions 三类 AI prompt 是否消费到 operation。
+- Render v2 是否识别 render-aware operation。
+- `x^2=4` 是否仍走 unsupported / fallback。
+
+operation 覆盖矩阵：
+
+| operation | template kind | render-aware | 代表样例 |
+| --- | --- | --- | --- |
+| `write_equation` | `write` | 否 | `2x+3>7`, `(x+1)/2=4` |
+| `move_term` | `move` | 是 | `2x+3>7`, `2(x+3)+3(x-1)=20` |
+| `expand_brackets` | `expand` | 是 | `3(x-1)<=12`, `2(x+3)+3(x-1)=20` |
+| `combine_like_terms` | `transform` | 是 | `x/2+x/3=5`, `2(x+3)+3(x-1)=20` |
+| `multiply_both_sides` | `transform` | 是 | `x/2+3=7` |
+| `divide_both_sides` | `transform` | 是 | `2x+3>7`, `x/2+x/3=5` |
+| `simplify_expression` | `transform` | 否 | `2x+3>7`, `(x+1)/2=4` |
+| `final_answer` | `answer` | 是 | `(x+1)/2=4`, `2(x+3)+3(x-1)=20` |
+| `clear_denominator` | `transform` | 是 | `(x+1)/2=4`, `x/2+x/3=5` |
+| `solve_inequality` | `answer` | 是 | `2x+3>7`, `3(x-1)<=12` |
+| `flip_inequality_sign` | `transform` | 否 | `-2x+3>7` |
+
+关键回归样例：
+
+```ts
+[
+  {
+    equation: '2x+3>7',
+    expectedOperations: ['write_equation', 'move_term', 'simplify_expression', 'divide_both_sides', 'solve_inequality'],
+    expectedAnswer: 'x>2'
+  },
+  {
+    equation: '3(x-1)<=12',
+    expectedOperations: ['write_equation', 'expand_brackets', 'move_term', 'simplify_expression', 'divide_both_sides', 'solve_inequality'],
+    expectedAnswer: 'x\\le5'
+  },
+  {
+    equation: '-2x+3>7',
+    expectedOperations: ['write_equation', 'move_term', 'simplify_expression', 'flip_inequality_sign', 'solve_inequality'],
+    expectedAnswer: 'x<-2'
+  },
+  {
+    equation: '(x+1)/2=4',
+    expectedOperations: ['write_equation', 'clear_denominator', 'simplify_expression', 'move_term', 'final_answer'],
+    expectedAnswer: 'x=7'
+  },
+  {
+    equation: 'x/2+x/3=5',
+    expectedOperations: ['write_equation', 'clear_denominator', 'combine_like_terms', 'divide_both_sides', 'final_answer'],
+    expectedAnswer: 'x=6'
+  },
+  {
+    equation: '2(x+3)+3(x-1)=20',
+    expectedOperations: ['write_equation', 'expand_brackets', 'combine_like_terms', 'move_term', 'simplify_expression', 'divide_both_sides', 'final_answer'],
+    expectedAnswer: 'x=\\frac{17}{5}'
+  }
+]
+```
+
+当前阶段先做 coverage / regression，比继续扩题型更优。因为主链已经从 generator 延伸到 Template、AI prompt、Render 和 fallback；任何一个 operation 缺模板映射、prompt 序列化或 render 识别，新增题型都会变成“能生成但不可稳定出片”。这套回归护栏先把语义链路固定下来，后续扩题型时才不会反复打碎已跑通的主流程。
+
 ## 3. 当前模块清单
 
 ### 3.1 类型层
@@ -810,6 +1684,11 @@ Integration 提供统一入口
 
 可以继续做：
 
+- 阅读 [Equation Family Expansion Plan v1](./equation-family-expansion-plan-v1.md)，按代数家族而不是零散题型推进后续扩展。
+- 阅读 [Quadratic Equation Family Plan v1](./quadratic-equation-family-plan-v1.md)，先把一元二次方程的分支解语义和 operation 设计清楚，再进入试点实现。
+- 阅读 [Quadratic Formula Plan v1](./quadratic-formula-plan-v1.md)，先把判别式、根的个数分类和无实数解表达规划清楚，再进入求根公式型试点。
+- 阅读 [Linear System Family Plan v1](./linear-system-family-plan-v1.md)，先把二元一次方程组的代入法、消元法和结果分类规划清楚，再进入最小试点。
+- 阅读 [Variable-Denominator Fraction Inequality Plan v1](./variable-denominator-fraction-inequality-plan-v1.md)，先规划变量分母分式不等式的定义域与区间分析链路，再进入实现。
 - 把 Remotion scene 的数据来源切换为 `buildEnhancedLessonProblem`。
 - 增加 CLI 脚本：输入方程，输出 problem JSON 和 report JSON。
 - 增加更多题型：

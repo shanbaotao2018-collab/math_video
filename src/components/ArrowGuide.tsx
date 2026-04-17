@@ -7,8 +7,10 @@ type Point = {
 
 type Props = {
   from: Point;
+  opacity?: number;
   to: Point;
   progress: number;
+  strokeWidth?: number;
   style?: CSSProperties;
 };
 
@@ -16,15 +18,15 @@ const clamp = (value: number) => {
   return Math.min(1, Math.max(0, value));
 };
 
-export const ArrowGuide = ({from, progress, style, to}: Props) => {
+export const ArrowGuide = ({from, opacity = 0.82, progress, strokeWidth = 4, style, to}: Props) => {
   const safeProgress = clamp(progress);
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy);
   const dashOffset = length * (1 - safeProgress);
   const angle = Math.atan2(dy, dx);
-  const headLength = 18;
-  const headWidth = 8;
+  const headLength = 12 + strokeWidth;
+  const headWidth = 3 + strokeWidth;
   const drawnTip = {
     x: from.x + dx * safeProgress,
     y: from.y + dy * safeProgress
@@ -53,8 +55,8 @@ export const ArrowGuide = ({from, progress, style, to}: Props) => {
       <path
         d={`M ${from.x} ${from.y} L ${to.x} ${to.y}`}
         fill="none"
-        stroke="rgba(255, 233, 156, 0.95)"
-        strokeWidth={6}
+        stroke={`rgba(255, 233, 156, ${opacity})`}
+        strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeDasharray={length}
         strokeDashoffset={dashOffset}
@@ -62,7 +64,7 @@ export const ArrowGuide = ({from, progress, style, to}: Props) => {
       {safeProgress > 0.98 ? (
         <polygon
           points={`${drawnTip.x},${drawnTip.y} ${leftPoint.x},${leftPoint.y} ${rightPoint.x},${rightPoint.y}`}
-          fill="rgba(255, 233, 156, 0.98)"
+          fill={`rgba(255, 233, 156, ${Math.min(0.92, opacity + 0.08)})`}
         />
       ) : null}
     </svg>

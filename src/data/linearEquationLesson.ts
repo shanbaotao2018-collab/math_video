@@ -2,7 +2,7 @@ import type {AlgebraLesson} from '../types/algebra';
 import {generateAlgebraSteps} from '../engine/generator';
 import {normalizeLessonWithTemplate} from '../utils/templates';
 
-const generatedProblem = generateAlgebraSteps('4(x+2)=20');
+const generatedProblem = generateAlgebraSteps('2x^2+x-1=0');
 
 if (generatedProblem.supported === false) {
   throw new Error(generatedProblem.reason);
@@ -24,10 +24,10 @@ const rawLinearEquationLesson: AlgebraLesson = {
     answerTag: '最终答案'
   },
   pacing: {
-    introFrames: 45,
+    introFrames: 18,
     stepHoldFrames: 55,
     stepGapFrames: 28,
-    answerHoldFrames: 60
+    answerHoldFrames: 90
   },
   steps: generatedProblem.problem.steps
 };

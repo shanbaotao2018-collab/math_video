@@ -1,0 +1,250 @@
+import type {AlgebraProblem} from '../../types/algebra';
+import type {TeachingPersona, VideoHook} from '../teaching';
+import type {EmphasisCue, EmphasisPlan} from './emphasisPlanTypes';
+import type {
+  PublishingCoverFrame,
+  PublishingCoverFrameSource,
+  PublishingPack,
+  PublishingSeriesContext
+} from './publishingPackTypes';
+import type {VideoRenderPlan, VideoRenderShot} from './videoRenderTypes';
+
+type PublishingFamilyInfo = {
+  id: string;
+  label: string;
+};
+
+type BuildPublishingPackArgs = {
+  emphasisPlan?: EmphasisPlan;
+  equation: string;
+  family: PublishingFamilyInfo;
+  presentationMode: string;
+  problem: AlgebraProblem;
+  qualityTier: string;
+  renderPlan?: VideoRenderPlan;
+  series?: PublishingSeriesContext;
+  teachingPersona: TeachingPersona;
+  videoHook?: VideoHook;
+};
+
+const FAMILY_HASHTAGS: Record<string, string> = {
+  fraction_equation: '#分式方程',
+  fraction_inequality: '#分式不等式',
+  linear_equation: '#一元一次方程',
+  linear_inequality: '#一元一次不等式',
+  linear_system: '#方程组',
+  quadratic_equation: '#一元二次方程',
+  unknown: '#代数题'
+};
+
+const PERSONA_HASHTAGS: Record<TeachingPersona['id'], string> = {
+  calm_teacher: '#稳扎稳打',
+  exam_coach: '#考试技巧',
+  strict_teacher: '#易错提醒'
+};
+
+const PRESENTATION_HASHTAGS: Record<string, string> = {
+  answer_only: '#快速看答案',
+  compact_steps: '#短视频讲题',
+  full_steps: '#完整推导',
+  semantic_full_steps: '#解题思路'
+};
+
+const normalizeText = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
+
+const cleanLatexForCopy = (value: string) => {
+  return value
+    .replace(/\\text\{([^{}]*)\}/g, '$1')
+    .replace(/\\leq?/g, '≤')
+    .replace(/\\geq?/g, '≥')
+    .replace(/\\neq/g, '≠')
+    .replace(/\\ne/g, '≠')
+    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+    .replace(/\\cup/g, '∪')
+    .replace(/\\infty/g, '∞')
+    .replace(/\\[,;:! ]*/g, ' ')
+    .replace(/[{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const clampCopy = (value: string, maxLength: number) => {
+  const normalized = normalizeText(value);
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
+};
+
+const formatEpisodeNumber = (episodeIndex: number) => {
+  return String(episodeIndex).padStart(3, '0');
+};
+
+const uniqueTags = (tags: string[]) => {
+  return Array.from(new Set(tags.filter((tag) => tag.startsWith('#') && tag.length > 1)));
+};
+
+const getCueByKind = (emphasisPlan: EmphasisPlan | undefined, kind: EmphasisCue['kind']) => {
+  return emphasisPlan?.cues.find((cue) => cue.kind === kind && normalizeText(cue.text));
+};
+
+const getCoverFrameSource = (kind: EmphasisCue['kind']): PublishingCoverFrameSource => {
+  switch (kind) {
+    case 'hook':
+      return 'hook_emphasis';
+    case 'mistake':
+      return 'mistake_emphasis';
+    case 'result':
+      return 'result_emphasis';
+    case 'rule':
+      return 'rule_emphasis';
+  }
+};
+
+const midpoint = (shot: VideoRenderShot) => {
+  return Math.min(shot.endMs - 1, shot.startMs + Math.floor((shot.endMs - shot.startMs) / 2));
+};
+
+const buildCoverFrame = (
+  renderPlan: VideoRenderPlan | undefined,
+  emphasisPlan: EmphasisPlan | undefined
+): PublishingCoverFrame => {
+  const shots = renderPlan?.shots ?? [];
+  const shotById = new Map(shots.map((shot) => [shot.shotId, shot]));
+  const priorityCue =
+    getCueByKind(emphasisPlan, 'hook') ??
+    getCueByKind(emphasisPlan, 'mistake') ??
+    getCueByKind(emphasisPlan, 'result') ??
+    getCueByKind(emphasisPlan, 'rule');
+
+  if (priorityCue) {
+    const alignedShot = shotById.get(priorityCue.shotId);
+
+    return {
+      reason: '优先选择最能代表开头钩子或重点提醒的镜头。',
+      source: getCoverFrameSource(priorityCue.kind),
+      shotId: priorityCue.shotId,
+      timestampMs: alignedShot ? midpoint(alignedShot) : priorityCue.startMs
+    };
+  }
+
+  const answerShot = shots.find((shot) => shot.shotType === 'answer');
+
+  if (answerShot) {
+    return {
+      reason: '没有重点 cue 时，选择最终答案镜头作为封面帧。',
+      source: 'answer_shot',
+      shotId: answerShot.shotId,
+      timestampMs: midpoint(answerShot)
+    };
+  }
+
+  const firstShot = shots[0];
+
+  return {
+    reason: '使用首个可渲染镜头作为保底封面帧。',
+    source: 'first_shot',
+    ...(firstShot
+      ? {
+          shotId: firstShot.shotId,
+          timestampMs: midpoint(firstShot)
+        }
+      : {timestampMs: 0})
+  };
+};
+
+const buildTitle = (args: BuildPublishingPackArgs, hookText: string, answerText: string) => {
+  const familyLabel = args.family.label || '代数题';
+  const episodePrefix = args.series?.episodeIndex ? `第${args.series.episodeIndex}题｜` : '';
+
+  if (args.videoHook?.style === 'mistake_first') {
+    return clampCopy(`${episodePrefix}${familyLabel}易错点：${hookText || answerText}`, 46);
+  }
+
+  if (args.videoHook?.style === 'shortcut_first') {
+    return clampCopy(`${episodePrefix}${familyLabel}捷径：${hookText || '先抓关键步骤'}`, 46);
+  }
+
+  if (args.videoHook?.style === 'question_first') {
+    return clampCopy(`${episodePrefix}${familyLabel}怎么下手？${hookText || args.equation}`, 46);
+  }
+
+  return clampCopy(`${episodePrefix}${familyLabel}一题讲清：${args.equation}`, 46);
+};
+
+const buildCoverText = (args: BuildPublishingPackArgs, hookText: string, answerText: string) => {
+  const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
+  const ruleCue = getCueByKind(args.emphasisPlan, 'rule');
+  const primary = hookText || mistakeCue?.text || ruleCue?.text || `${args.family.label}一题讲清`;
+  const secondary = answerText ? `答案 ${answerText}` : '';
+
+  return [clampCopy(primary, 24), clampCopy(secondary, 18)].filter(Boolean).join('\n');
+};
+
+const buildCaption = (args: BuildPublishingPackArgs, hookText: string, answerText: string) => {
+  const ruleCue = getCueByKind(args.emphasisPlan, 'rule');
+  const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
+  const resultCue = getCueByKind(args.emphasisPlan, 'result');
+  const personaCopy = args.teachingPersona.label.endsWith('讲解')
+    ? args.teachingPersona.label
+    : `${args.teachingPersona.label}风格讲解`;
+  const details = [ruleCue?.text, mistakeCue?.text, resultCue?.text]
+    .map((text) => normalizeText(text))
+    .filter(Boolean);
+
+  return clampCopy(
+    [
+      hookText || `${args.family.label}解题演示。`,
+      `题目：${args.equation}。`,
+      answerText ? `答案：${answerText}。` : '',
+      details.length > 0 ? `重点：${details.join('；')}。` : '',
+      `${personaCopy}。`
+    ].join(' '),
+    180
+  );
+};
+
+const buildHashtags = (args: BuildPublishingPackArgs) => {
+  return uniqueTags([
+    '#初中数学',
+    '#数学解题',
+    FAMILY_HASHTAGS[args.family.id] ?? '#代数题',
+    PERSONA_HASHTAGS[args.teachingPersona.id],
+    PRESENTATION_HASHTAGS[args.presentationMode] ?? '#数学短视频',
+    args.qualityTier === 'detailed' ? '#详细讲解' : '#基础训练',
+    args.videoHook?.style === 'mistake_first' ? '#易错题' : '',
+    args.videoHook?.style === 'shortcut_first' ? '#解题技巧' : ''
+  ]).slice(0, 8);
+};
+
+export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPack {
+  const hookText = normalizeText(args.videoHook?.text);
+  const answerText = cleanLatexForCopy(args.problem.answer);
+  const hashtags = buildHashtags(args);
+  const episodeNumber = args.series?.episodeIndex ? formatEpisodeNumber(args.series.episodeIndex) : undefined;
+  const seriesId = args.series?.seriesId ?? `${args.family.id}-${args.qualityTier}`;
+  const seriesName = args.series?.seriesName ?? '初中数学短题精讲';
+
+  return {
+    caption: buildCaption(args, hookText, answerText),
+    coverFrame: buildCoverFrame(args.renderPlan, args.emphasisPlan),
+    coverText: buildCoverText(args, hookText, answerText),
+    hashtags,
+    series: {
+      ...(args.series?.episodeIndex ? {episodeIndex: args.series.episodeIndex} : {}),
+      episodeKey: episodeNumber
+        ? `${seriesId}:${episodeNumber}`
+        : `${args.family.id}:${args.qualityTier}:${args.presentationMode}`,
+      ...(episodeNumber ? {episodeNumber} : {}),
+      familyId: args.family.id,
+      name: seriesName,
+      presentationMode: args.presentationMode,
+      qualityTier: args.qualityTier,
+      seriesId,
+      seriesName
+    },
+    title: buildTitle(args, hookText, answerText)
+  };
+}

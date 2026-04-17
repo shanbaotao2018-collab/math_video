@@ -19,7 +19,7 @@ export const ExpandGuideLayer = ({action, layout, progress, rects}: Props) => {
   return (
     <>
       {arrows.map((arrow, index) => {
-        return <ArrowGuide key={index} from={arrow.from} to={arrow.to} progress={progress} />;
+        return <ArrowGuide key={index} from={arrow.from} to={arrow.to} progress={progress} opacity={0.76} strokeWidth={4} />;
       })}
     </>
   );

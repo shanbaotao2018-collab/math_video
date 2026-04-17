@@ -23,7 +23,7 @@ const ramp = (progress: number, start: number, end: number) => {
 
 export const MoveGuideLayer = ({action, layout, progress, rects}: Props) => {
   const moveArrow = getMoveArrowAnchors(layout, rects, action);
-  const arrowProgress = ramp(progress, 0.16, 0.5);
+  const arrowProgress = ramp(progress, 0.22, 0.56);
 
-  return <ArrowGuide from={moveArrow.from} to={moveArrow.to} progress={arrowProgress} />;
+  return <ArrowGuide from={moveArrow.from} to={moveArrow.to} progress={arrowProgress} opacity={0.58} strokeWidth={3.5} />;
 };

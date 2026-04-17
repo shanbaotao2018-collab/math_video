@@ -27,9 +27,9 @@ export const DEFAULT_PHASE_CONFIGS: Record<AlgebraStepKind, StepPhaseConfig> = {
     settleRatio: 0.25
   },
   answer: {
-    introRatio: 0.15,
-    actionRatio: 0.35,
-    settleRatio: 0.5
+    introRatio: 0.12,
+    actionRatio: 0.3,
+    settleRatio: 0.58
   }
 };
 

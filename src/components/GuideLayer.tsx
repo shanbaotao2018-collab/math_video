@@ -6,6 +6,7 @@ import {FadeOverlay} from './FadeOverlay';
 import {HighlightOverlay} from './HighlightOverlay';
 import {MathFormula} from './MathFormula';
 import {MoveGuideLayer} from './MoveGuideLayer';
+import {OperationSemanticOverlay} from './OperationSemanticOverlay';
 import type {AlgebraLesson, LessonLayout} from '../types/algebra';
 import {resolveVisualActionBuckets} from '../utils/actionResolver';
 import {
@@ -15,6 +16,13 @@ import {
   type ExpandGuideRects,
   type MoveGuideRects
 } from '../utils/anchors';
+import {
+  hasOperationDrivenGuide,
+  withOperationExpandAction,
+  withOperationMoveAction,
+  withOperationMoveFadeOutAction,
+  withOperationMoveHighlightAction
+} from '../utils/renderOperations';
 
 type StepLike = AlgebraLesson['steps'][number];
 
@@ -22,6 +30,7 @@ type Props = {
   expandRects?: ExpandGuideRects;
   layout: LessonLayout;
   moveRects?: MoveGuideRects;
+  operationRects?: MoveGuideRects;
   progress: number;
   step: StepLike | null;
 };
@@ -38,7 +47,7 @@ const ramp = (progress: number, start: number, end: number) => {
   return clamp((progress - start) / (end - start));
 };
 
-export const GuideLayer = ({expandRects, layout, moveRects, progress, step}: Props) => {
+export const GuideLayer = ({expandRects, layout, moveRects, operationRects, progress, step}: Props) => {
   const actionBuckets = resolveVisualActionBuckets(step);
   const hasVisualActions =
     actionBuckets.expand.length > 0 ||
@@ -47,14 +56,33 @@ export const GuideLayer = ({expandRects, layout, moveRects, progress, step}: Pro
     actionBuckets.fadeOut.length > 0 ||
     actionBuckets.fadeIn.length > 0 ||
     actionBuckets.cancel.length > 0;
+  const hasOperationGuide = hasOperationDrivenGuide(step);
 
-  if (!step || !hasVisualActions) {
+  if (!step || (!hasVisualActions && !hasOperationGuide)) {
     return null;
   }
 
+  const expandActions =
+    actionBuckets.expand.length > 0
+      ? actionBuckets.expand.map((action) => withOperationExpandAction(step, action) ?? action)
+      : [withOperationExpandAction(step)].filter((action): action is NonNullable<typeof action> => Boolean(action));
+  const highlightActions =
+    actionBuckets.highlight.length > 0
+      ? actionBuckets.highlight.map((action) => withOperationMoveHighlightAction(step, action) ?? action)
+      : [withOperationMoveHighlightAction(step)].filter((action): action is NonNullable<typeof action> => Boolean(action));
+  const fadeOutActions =
+    actionBuckets.fadeOut.length > 0
+      ? actionBuckets.fadeOut.map((action) => withOperationMoveFadeOutAction(step, action) ?? action)
+      : [withOperationMoveFadeOutAction(step)].filter((action): action is NonNullable<typeof action> => Boolean(action));
+  const moveActions =
+    actionBuckets.move.length > 0
+      ? actionBuckets.move.map((action) => withOperationMoveAction(step, action) ?? action)
+      : [withOperationMoveAction(step)].filter((action): action is NonNullable<typeof action> => Boolean(action));
+  const guideMoveRects = moveRects ?? operationRects;
+
   return (
     <AbsoluteFill style={{pointerEvents: 'none', zIndex: 5}}>
-      {actionBuckets.expand.map((action, index) => {
+      {expandActions.map((action, index) => {
         return (
           <ExpandGuideLayer
             key={`expand-${index}`}
@@ -65,19 +93,19 @@ export const GuideLayer = ({expandRects, layout, moveRects, progress, step}: Pro
           />
         );
       })}
-      {actionBuckets.highlight.map((action, index) => {
+      {highlightActions.map((action, index) => {
         return (
           <HighlightOverlay
             key={`highlight-${index}`}
             action={action}
             layout={layout}
             progress={progress}
-            rects={moveRects}
+            rects={guideMoveRects}
           />
         );
       })}
-      {actionBuckets.fadeOut.map((action, index) => {
-        const patch = getMovePositionPatch(layout, moveRects, action.anchor, DEFAULT_MOVE_SOURCE, action.term);
+      {fadeOutActions.map((action, index) => {
+        const patch = getMovePositionPatch(layout, guideMoveRects, action.anchor, DEFAULT_MOVE_SOURCE, action.term);
 
         return (
           <FadeOverlay
@@ -95,20 +123,20 @@ export const GuideLayer = ({expandRects, layout, moveRects, progress, step}: Pro
           />
         );
       })}
-      {actionBuckets.move.map((action, index) => {
+      {moveActions.map((action, index) => {
         return (
           <MoveGuideLayer
             key={`move-${index}`}
             action={action}
             layout={layout}
             progress={progress}
-            rects={moveRects}
+            rects={guideMoveRects}
           />
         );
       })}
       {actionBuckets.fadeIn.map((action, index) => {
-        const moveAction = actionBuckets.move[0];
-        const patch = getMovePositionPatch(layout, moveRects, action.anchor, DEFAULT_MOVE_TARGET, moveAction?.term);
+        const moveAction = moveActions[0];
+        const patch = getMovePositionPatch(layout, guideMoveRects, action.anchor, DEFAULT_MOVE_TARGET, moveAction?.term);
 
         if (!action.expression) {
           return null;
@@ -138,9 +166,16 @@ export const GuideLayer = ({expandRects, layout, moveRects, progress, step}: Pro
       })}
       {actionBuckets.cancel.map((action, index) => {
         return (
-          <CancelOverlay key={`cancel-${index}`} action={action} layout={layout} progress={progress} rects={moveRects} />
+          <CancelOverlay
+            key={`cancel-${index}`}
+            action={action}
+            layout={layout}
+            progress={progress}
+            rects={guideMoveRects}
+          />
         );
       })}
+      <OperationSemanticOverlay layout={layout} progress={progress} rects={operationRects ?? guideMoveRects} step={step} />
     </AbsoluteFill>
   );
 };

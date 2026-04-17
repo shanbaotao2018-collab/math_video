@@ -28,6 +28,7 @@ export type AlgebraStep = {
   kind: StepKind;
   latex: string;
   note?: string;
+  operation?: import('./algebraDslV2').AlgebraOperationV2;
   phaseConfig?: Partial<StepPhaseConfig>;
   expression?: string;
   tokenMap?: FormulaToken[];
@@ -39,7 +40,10 @@ export type LessonStep = AlgebraStep;
 export type AlgebraProblem = {
   answer: string;
   equation: string;
+  note?: string;
+  question?: string;
   steps: AlgebraStep[];
+  title?: string;
 };
 
 export type LessonPacing = {
@@ -83,3 +87,16 @@ export type {
   VisualLine,
   VisualRef
 } from './visuals';
+
+export {
+  toAlgebraProblemV1FromV2Draft,
+  toAlgebraProblemV2Draft,
+  toAlgebraStepV1FromV2Draft,
+  toAlgebraStepV2Draft,
+  type AlgebraOperationTypeV2,
+  type AlgebraOperationV2,
+  type AlgebraProblemV2,
+  type AlgebraStepV2,
+  type EquationSideV2,
+  type LikeTermGroupV2
+} from './algebraDslV2';

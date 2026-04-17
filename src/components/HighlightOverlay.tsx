@@ -37,9 +37,9 @@ export const HighlightOverlay = ({action, layout, progress, rects}: Props) => {
         width: patch.width + 12,
         height: patch.height + 10,
         borderRadius: 6,
-        background: 'rgba(255, 233, 156, 0.1)',
-        border: '2px solid rgba(255, 233, 156, 0.88)',
-        boxShadow: '0 0 14px rgba(255, 233, 156, 0.24)'
+        background: 'rgba(255, 233, 156, 0.08)',
+        border: '2px solid rgba(255, 233, 156, 0.72)',
+        boxShadow: '0 0 12px rgba(255, 233, 156, 0.2)'
       }}
     />
   );

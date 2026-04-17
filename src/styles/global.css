@@ -63,9 +63,9 @@ body {
 
 .lesson-title {
   margin: 0;
-  font-size: 66px;
+  font-size: 60px;
   font-weight: 500;
-  letter-spacing: 2px;
+  letter-spacing: 0;
   text-shadow: 0 0 12px rgba(255, 255, 255, 0.18);
 }
 
@@ -76,7 +76,7 @@ body {
 
 .panel {
   border: 2px solid rgba(208, 234, 212, 0.22);
-  border-radius: 28px;
+  border-radius: 8px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.03),
@@ -84,7 +84,7 @@ body {
 }
 
 .chalk-panel {
-  padding: 30px 34px;
+  padding: 26px 32px;
 }
 
 .section-label {
@@ -122,14 +122,39 @@ body {
   border-bottom: 1px solid rgba(225, 242, 227, 0.12);
 }
 
+.combined-lesson-heading {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 18px;
+  min-height: 48px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(225, 242, 227, 0.1);
+}
+
+.combined-kicker {
+  font-size: 23px;
+  color: rgba(255, 243, 194, 0.82);
+}
+
+.combined-title {
+  margin: 0;
+  font-size: 39px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  color: rgba(247, 255, 251, 0.98);
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.14);
+}
+
 .combined-strategy-copy {
   min-width: 0;
 }
 
 .combined-prompt-formula {
-  font-size: 58px;
+  font-size: 54px;
   color: #f7fffb;
-  padding-bottom: 18px;
+  padding-bottom: 14px;
   border-bottom: 1px solid rgba(225, 242, 227, 0.12);
 }
 
@@ -137,11 +162,108 @@ body {
   margin: 0;
 }
 
+.linear-system-context {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 0 2px;
+  border-top: 1px solid rgba(225, 242, 227, 0.12);
+  border-bottom: 1px solid rgba(225, 242, 227, 0.12);
+}
+
+.linear-system-context-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.linear-system-context-title {
+  font-size: 22px;
+  color: rgba(220, 241, 224, 0.7);
+  letter-spacing: 4px;
+}
+
+.linear-system-context-relation {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.linear-system-context-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 233, 156, 0.35);
+  color: #fff1bd;
+  background: rgba(255, 233, 156, 0.1);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.linear-system-context-copy {
+  font-size: 24px;
+  color: rgba(241, 248, 242, 0.84);
+  line-height: 1.35;
+  text-align: right;
+}
+
+.linear-system-context-equations {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.linear-system-context-equation {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(220, 241, 224, 0.12);
+  background: rgba(255, 255, 255, 0.025);
+  transition: none;
+}
+
+.linear-system-context-equation-active {
+  border-color: rgba(126, 221, 184, 0.38);
+  background: rgba(126, 221, 184, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(126, 221, 184, 0.1);
+}
+
+.linear-system-context-equation-muted {
+  opacity: 0.58;
+}
+
+.linear-system-context-index {
+  color: rgba(220, 241, 224, 0.68);
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+
+.linear-system-context-formula {
+  font-size: 34px;
+  color: #f7fffb;
+}
+
+.linear-system-context-formula .katex-display,
+.linear-system-context-formula .katex {
+  margin: 0;
+}
+
 .combined-answer-slot {
   margin-top: auto;
   display: flex;
   justify-content: flex-end;
-  padding-top: 12px;
+  padding-top: 8px;
 }
 
 .combined-answer-slot-centered {
@@ -150,10 +272,14 @@ body {
 
 .step-card {
   display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 10px;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
   align-items: center;
-  padding: 2.5px 0;
+  min-height: 54px;
+  padding: 4px 10px 4px 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  transition: none;
 }
 
 .step-index {
@@ -162,7 +288,7 @@ body {
   justify-content: flex-start;
   color: rgba(224, 241, 227, 0.62);
   font-size: 17px;
-  letter-spacing: 2px;
+  letter-spacing: 0;
 }
 
 .step-formula {
@@ -170,54 +296,286 @@ body {
   color: #f7fffb;
 }
 
+.step-card-transform .step-formula {
+  color: rgba(242, 250, 244, 0.92);
+}
+
+.step-card-active {
+  border-left-color: rgba(255, 233, 156, 0.76);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.step-card-active .step-index {
+  color: rgba(255, 243, 194, 0.88);
+}
+
+.step-card-answer {
+  border-left-color: rgba(255, 233, 156, 0.9);
+  background: rgba(255, 233, 156, 0.07);
+}
+
+.step-card-answer .step-formula {
+  color: #fff2b8;
+  text-shadow: 0 0 12px rgba(255, 233, 156, 0.18);
+}
+
+.step-card-final-operation.step-card-active {
+  background: rgba(255, 233, 156, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 233, 156, 0.16);
+}
+
+.step-card-quadratic-outcome {
+  box-shadow: inset 0 0 0 1px rgba(126, 221, 184, 0.08);
+}
+
+.step-card-system-unique-solution {
+  border-left-color: rgba(255, 214, 109, 0.92);
+  background: rgba(255, 214, 109, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 109, 0.14);
+}
+
+.step-card-system-unique-solution .step-formula {
+  color: #fff1bd;
+  text-shadow: 0 0 14px rgba(255, 214, 109, 0.18);
+}
+
+.step-card-system-unique-solution.step-card-active {
+  background: rgba(255, 214, 109, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 109, 0.2);
+}
+
+.step-card-system-no-solution {
+  border-left-color: rgba(255, 163, 132, 0.92);
+  background: rgba(255, 163, 132, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 163, 132, 0.14);
+}
+
+.step-card-system-no-solution .step-formula {
+  color: #ffe3d8;
+  text-shadow: 0 0 14px rgba(255, 163, 132, 0.16);
+}
+
+.step-card-system-no-solution.step-card-active {
+  background: rgba(255, 163, 132, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 163, 132, 0.2);
+}
+
+.step-card-system-infinite-solutions {
+  border-left-color: rgba(119, 222, 231, 0.92);
+  background: rgba(119, 222, 231, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(119, 222, 231, 0.14);
+}
+
+.step-card-system-infinite-solutions .step-formula {
+  color: #ddfbff;
+  text-shadow: 0 0 14px rgba(119, 222, 231, 0.16);
+}
+
+.step-card-system-infinite-solutions.step-card-active {
+  background: rgba(119, 222, 231, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(119, 222, 231, 0.2);
+}
+
+.step-card-quadratic-two-roots {
+  border-left-color: rgba(126, 221, 184, 0.92);
+  background: rgba(126, 221, 184, 0.08);
+}
+
+.step-card-quadratic-two-roots .step-formula {
+  color: #d9ffe9;
+  text-shadow: 0 0 14px rgba(126, 221, 184, 0.2);
+}
+
+.step-card-quadratic-two-roots.step-card-active {
+  background: rgba(126, 221, 184, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(126, 221, 184, 0.18);
+}
+
+.step-card-quadratic-double-root {
+  border-left-color: rgba(119, 222, 231, 0.92);
+  background: rgba(119, 222, 231, 0.08);
+}
+
+.step-card-quadratic-double-root .step-formula {
+  color: #ddfbff;
+  text-shadow: 0 0 14px rgba(119, 222, 231, 0.18);
+}
+
+.step-card-quadratic-double-root.step-card-active {
+  background: rgba(119, 222, 231, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(119, 222, 231, 0.18);
+}
+
+.step-card-quadratic-no-real-root {
+  border-left-color: rgba(255, 163, 132, 0.92);
+  background: rgba(255, 163, 132, 0.08);
+}
+
+.step-card-quadratic-no-real-root .step-formula {
+  color: #ffe3d8;
+  text-shadow: 0 0 14px rgba(255, 163, 132, 0.16);
+}
+
+.step-card-quadratic-no-real-root.step-card-active {
+  background: rgba(255, 163, 132, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 163, 132, 0.18);
+}
+
 .step-formula .katex-display {
   margin: 0;
 }
 
 .answer-highlight {
-  min-width: 320px;
-  padding: 18px 24px 24px;
-  border-radius: 24px;
-  border: 3px solid rgba(255, 240, 171, 0.95);
-  background: linear-gradient(180deg, rgba(250, 235, 166, 0.12), rgba(255, 255, 255, 0.04));
+  min-width: 390px;
+  padding: 18px 28px 26px;
+  border-radius: 8px;
+  border: 3px solid rgba(255, 240, 171, 0.9);
+  background: linear-gradient(180deg, rgba(250, 235, 166, 0.16), rgba(255, 255, 255, 0.045));
   box-shadow:
-    0 0 0 4px rgba(255, 240, 171, 0.12),
-    0 16px 36px rgba(0, 0, 0, 0.18);
+    0 0 0 3px rgba(255, 240, 171, 0.1),
+    0 16px 30px rgba(0, 0, 0, 0.16);
 }
 
 .answer-label {
-  margin-bottom: 10px;
-  font-size: 22px;
+  margin-bottom: 12px;
+  font-size: 24px;
   letter-spacing: 4px;
   color: rgba(255, 243, 194, 0.88);
 }
 
 .answer-formula {
-  font-size: 58px;
+  font-size: 82px;
   color: #fff8d5;
+}
+
+.answer-hammer {
+  margin-top: 16px;
+  font-size: 34px;
+  line-height: 1.22;
+  font-weight: 700;
+  color: #fff1bd;
+}
+
+.answer-highlight-quadratic {
+  box-shadow:
+    0 0 0 3px rgba(126, 221, 184, 0.08),
+    0 16px 30px rgba(0, 0, 0, 0.16);
+}
+
+.answer-highlight-system-unique-solution {
+  border-color: rgba(255, 214, 109, 0.88);
+  background: linear-gradient(180deg, rgba(255, 214, 109, 0.16), rgba(255, 255, 255, 0.045));
+  box-shadow:
+    0 0 0 3px rgba(255, 214, 109, 0.1),
+    0 16px 30px rgba(0, 0, 0, 0.16);
+}
+
+.answer-label-system-unique-solution {
+  color: rgba(255, 231, 153, 0.94);
+}
+
+.answer-formula-system-unique-solution {
+  color: #fff2c7;
+  text-shadow: 0 0 14px rgba(255, 214, 109, 0.14);
+}
+
+.answer-highlight-system-no-solution {
+  border-color: rgba(255, 163, 132, 0.88);
+  background: linear-gradient(180deg, rgba(255, 163, 132, 0.16), rgba(255, 255, 255, 0.045));
+  box-shadow:
+    0 0 0 3px rgba(255, 163, 132, 0.1),
+    0 16px 30px rgba(0, 0, 0, 0.16);
+}
+
+.answer-label-system-no-solution {
+  color: rgba(255, 211, 196, 0.94);
+}
+
+.answer-formula-system-no-solution {
+  color: #ffe3d8;
+  text-shadow: 0 0 14px rgba(255, 163, 132, 0.14);
+}
+
+.answer-highlight-system-infinite-solutions {
+  border-color: rgba(119, 222, 231, 0.88);
+  background: linear-gradient(180deg, rgba(119, 222, 231, 0.16), rgba(255, 255, 255, 0.045));
+  box-shadow:
+    0 0 0 3px rgba(119, 222, 231, 0.1),
+    0 16px 30px rgba(0, 0, 0, 0.16);
+}
+
+.answer-label-system-infinite-solutions {
+  color: rgba(210, 247, 250, 0.94);
+}
+
+.answer-formula-system-infinite-solutions {
+  color: #ddfbff;
+  text-shadow: 0 0 14px rgba(119, 222, 231, 0.14);
+}
+
+.answer-highlight-quadratic-two-roots {
+  border-color: rgba(126, 221, 184, 0.88);
+  background: linear-gradient(180deg, rgba(126, 221, 184, 0.14), rgba(255, 255, 255, 0.045));
+}
+
+.answer-label-quadratic-two-roots {
+  color: rgba(126, 221, 184, 0.92);
+}
+
+.answer-formula-quadratic-two-roots {
+  color: #ddffec;
+  text-shadow: 0 0 14px rgba(126, 221, 184, 0.14);
+}
+
+.answer-highlight-quadratic-double-root {
+  border-color: rgba(119, 222, 231, 0.88);
+  background: linear-gradient(180deg, rgba(119, 222, 231, 0.14), rgba(255, 255, 255, 0.045));
+}
+
+.answer-label-quadratic-double-root {
+  color: rgba(119, 222, 231, 0.92);
+}
+
+.answer-formula-quadratic-double-root {
+  color: #dcfcff;
+  text-shadow: 0 0 14px rgba(119, 222, 231, 0.14);
+}
+
+.answer-highlight-quadratic-no-real-root {
+  border-color: rgba(255, 163, 132, 0.88);
+  background: linear-gradient(180deg, rgba(255, 163, 132, 0.14), rgba(255, 255, 255, 0.045));
+}
+
+.answer-label-quadratic-no-real-root {
+  color: rgba(255, 185, 162, 0.94);
+}
+
+.answer-formula-quadratic-no-real-root {
+  color: #ffe4db;
+  text-shadow: 0 0 14px rgba(255, 163, 132, 0.14);
 }
 
 .subtitle-bar {
   display: grid;
-  grid-template-columns: 170px 1fr;
+  grid-template-columns: 98px 1fr;
   align-items: center;
-  gap: 18px;
-  min-height: 78px;
-  padding: 14px 22px;
-  border-radius: 18px;
-  border: 1px solid rgba(231, 245, 234, 0.18);
-  background: linear-gradient(180deg, rgba(7, 24, 17, 0.9), rgba(9, 31, 22, 0.86));
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.2);
+  gap: 14px;
+  min-height: 62px;
+  padding: 11px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(231, 245, 234, 0.14);
+  background: linear-gradient(180deg, rgba(7, 24, 17, 0.82), rgba(9, 31, 22, 0.78));
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
 .subtitle-label {
-  font-size: 24px;
-  letter-spacing: 4px;
+  font-size: 22px;
+  letter-spacing: 0;
   color: rgba(255, 243, 194, 0.8);
 }
 
 .subtitle-text {
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1.35;
   color: rgba(245, 251, 246, 0.96);
 }
@@ -225,4 +583,26 @@ body {
 .katex {
   color: inherit;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.06);
+}
+
+.problem-formula .katex .mfrac,
+.combined-prompt-formula .katex .mfrac,
+.step-formula .katex .mfrac,
+.answer-formula .katex .mfrac {
+  margin: 0 0.04em;
+}
+
+.problem-formula .katex .mfrac .frac-line,
+.combined-prompt-formula .katex .mfrac .frac-line,
+.step-formula .katex .mfrac .frac-line,
+.answer-formula .katex .mfrac .frac-line {
+  border-bottom-width: 0.075em;
+}
+
+.problem-formula .katex .mfrac > span > span,
+.combined-prompt-formula .katex .mfrac > span > span,
+.step-formula .katex .mfrac > span > span,
+.answer-formula .katex .mfrac > span > span {
+  padding-left: 0.03em;
+  padding-right: 0.03em;
 }

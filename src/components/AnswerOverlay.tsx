@@ -1,14 +1,16 @@
 import {interpolate} from 'remotion';
 
 import {AnswerHighlight} from './AnswerHighlight';
+import type {OperationAnswerVariant} from '../utils/renderOperations';
 
 type Props = {
   expression: string;
   label: string;
+  variant?: OperationAnswerVariant;
   progress: number;
 };
 
-export const AnswerOverlay = ({expression, label, progress}: Props) => {
+export const AnswerOverlay = ({expression, label, variant = 'default', progress}: Props) => {
   return (
     <div
       style={{
@@ -19,7 +21,7 @@ export const AnswerOverlay = ({expression, label, progress}: Props) => {
         })})`
       }}
     >
-      <AnswerHighlight label={label} expression={expression} />
+      <AnswerHighlight label={label} expression={expression} variant={variant} />
     </div>
   );
 };

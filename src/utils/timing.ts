@@ -44,7 +44,7 @@ export const getStepDuration = (step: AlgebraStep) => {
   }
 
   if (normalizedStep.kind === 'answer' || hasVisualAction(normalizedStep, 'answer')) {
-    duration += 40;
+    duration += 55;
   }
 
   return duration;

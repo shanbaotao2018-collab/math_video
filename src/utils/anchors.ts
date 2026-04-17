@@ -5,7 +5,8 @@ import type {
   FormulaToken,
   LessonLayout,
   PositionRef,
-  TokenRef
+  TokenRef,
+  VisualLine
 } from '../types/algebra';
 
 export type Point = {
@@ -233,6 +234,17 @@ const tokenHasRole = (token: FormulaToken, role: string) => {
     .includes(role);
 };
 
+const normalizeTokenText = (text: string | undefined) => {
+  return text?.replace(/\s+/g, '') ?? '';
+};
+
+const tokenHasText = (token: FormulaToken, text: string | undefined) => {
+  const normalizedTokenText = normalizeTokenText(token.text);
+  const normalizedText = normalizeTokenText(text);
+
+  return Boolean(normalizedText) && normalizedTokenText === normalizedText;
+};
+
 export const buildTokenSlots = (lineRect: GuideRect, tokenMap: FormulaToken[]): TokenSlot[] => {
   if (lineRect.width <= 0 || tokenMap.length === 0) {
     return [];
@@ -277,6 +289,28 @@ export const resolveTokenRef = (tokenRef: TokenRef, context: AnchorContext): Gui
         : undefined;
 
   return slot?.rect ?? null;
+};
+
+const findTokenRectByTextOrRole = (
+  lineRect: GuideRect | undefined,
+  tokenMap: FormulaToken[] | undefined,
+  term: string | undefined,
+  roles: string[]
+): GuideRect | null => {
+  if (!lineRect || !tokenMap) {
+    return null;
+  }
+
+  const tokenSlots = buildTokenSlots(lineRect, tokenMap);
+  const textSlot = tokenSlots.find(({token}) => tokenHasText(token, term));
+
+  if (textSlot) {
+    return textSlot.rect;
+  }
+
+  const roleSlot = tokenSlots.find(({token}) => roles.some((role) => tokenHasRole(token, role)));
+
+  return roleSlot?.rect ?? null;
 };
 
 const getMoveSourceRatio = (expression: string | undefined, term: string | undefined) => {
@@ -514,4 +548,37 @@ export const getMovePositionPatch = (
 
 export const getMovedTermExpression = (term: string | undefined) => {
   return getOppositeSignedTerm(term);
+};
+
+export const getSemanticTermPatch = (
+  layout: LessonLayout,
+  rects: MoveGuideRects | undefined,
+  options: {
+    fallbackAnchor: AnchorRef;
+    fallbackRatio?: number;
+    line?: VisualLine;
+    roles?: string[];
+    term?: string;
+  }
+): OverlayPatch => {
+  const fallbackLine = options.fallbackAnchor.line ?? ANCHOR_ROLE_RULES[options.fallbackAnchor.role].line;
+  const line = options.line ?? fallbackLine;
+  const context = getMoveAnchorContext(layout, rects, options.term);
+  const lineRect = getContextRect(context, line);
+  const tokenRect = findTokenRectByTextOrRole(
+    context[line],
+    getContextTokenMap(context, line),
+    options.term,
+    options.roles ?? []
+  );
+
+  if (tokenRect) {
+    return tokenRect;
+  }
+
+  const fallbackRatio = options.fallbackRatio ?? ANCHOR_ROLE_RULES[options.fallbackAnchor.role].xRatio;
+  const xRatio = getTermRatio(getContextExpression(context, line), options.term, fallbackRatio);
+  const point = getRectPoint(lineRect, xRatio, ANCHOR_ROLE_RULES[options.fallbackAnchor.role].yRatio);
+
+  return getMoveErasePatch(point, lineRect, options.term);
 };

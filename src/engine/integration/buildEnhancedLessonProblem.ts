@@ -6,39 +6,67 @@ import {
   type AIOrchestratorOptions,
   type EnhancementRunReport
 } from '../ai/enhanceProblemWithAI';
+import {
+  createFallbackProblem,
+  createGeneratedFallbackBuildStatus,
+  createSupportedBuildStatus,
+  createUnsupportedBuildStatus,
+  type LessonBuildQuality,
+  type LessonBuildReason
+} from './lessonBuildStatus';
 
 export type BuildEnhancedLessonProblemOptions = AIOrchestratorOptions & {
   ai?: boolean;
+  fallbackOnUnsupported?: boolean;
   returnReport?: boolean;
 };
 
-export type BuildEnhancedLessonProblemResult =
-  | {
-      problem: AlgebraProblem;
-      report?: EnhancementRunReport;
-      supported: true;
-    }
-  | {
-      equation: string;
-      reason: string;
-      supported: false;
-    };
+export type BuildEnhancedLessonProblemResult = {
+  equation?: string;
+  problem?: AlgebraProblem;
+  quality: LessonBuildQuality;
+  reason?: LessonBuildReason;
+  reasons?: LessonBuildReason[];
+  report?: EnhancementRunReport;
+  supported: boolean;
+};
 
 const normalizeRenderableProblem = (problem: AlgebraProblem): AlgebraProblem => {
   return normalizeProblemWithTemplate(problem);
+};
+
+const getUnsupportedFallbackNote = (generatorReason: string) => {
+  return `当前题型暂不在自动推导支持范围内：${generatorReason}`;
 };
 
 export const buildEnhancedLessonProblem = async (
   equation: string,
   options: BuildEnhancedLessonProblemOptions = {}
 ): Promise<BuildEnhancedLessonProblemResult> => {
-  const generated = generateAlgebraSteps(equation);
+  let generated: ReturnType<typeof generateAlgebraSteps>;
+
+  try {
+    generated = generateAlgebraSteps(equation);
+  } catch {
+    return {
+      ...createGeneratedFallbackBuildStatus('generator_failed'),
+      equation,
+      problem: normalizeRenderableProblem(createFallbackProblem(equation, '生成步骤时出现异常，已保留原题。'))
+    };
+  }
 
   if (!generated.supported) {
+    const shouldCreateFallback = options.fallbackOnUnsupported !== false;
+    const fallbackProblem = shouldCreateFallback
+      ? normalizeRenderableProblem(createFallbackProblem(generated.equation, getUnsupportedFallbackNote(generated.reason)))
+      : undefined;
+
     return {
       equation: generated.equation,
-      reason: generated.reason,
-      supported: false
+      ...(fallbackProblem ? {problem: fallbackProblem} : {}),
+      ...createUnsupportedBuildStatus({
+        fallback: shouldCreateFallback
+      })
     };
   }
 
@@ -47,21 +75,44 @@ export const buildEnhancedLessonProblem = async (
   if (options.ai === false) {
     return {
       problem: generatedProblem,
-      supported: true
+      ...createSupportedBuildStatus({
+        aiDisabled: true,
+        problem: generatedProblem
+      })
     };
   }
 
-  const {ai, returnReport, ...aiOptions} = options;
-  const enhanced = await enhanceProblemWithAIReport(generatedProblem, {
-    ...aiOptions,
-    question: aiOptions.question ?? equation
-  });
+  const {ai, fallbackOnUnsupported, returnReport, ...aiOptions} = options;
+  let enhanced: Awaited<ReturnType<typeof enhanceProblemWithAIReport>>;
+
+  try {
+    enhanced = await enhanceProblemWithAIReport(generatedProblem, {
+      ...aiOptions,
+      question: aiOptions.question ?? equation
+    });
+  } catch {
+    return {
+      problem: generatedProblem,
+      ...createSupportedBuildStatus({
+        aiDisabled: false,
+        problem: generatedProblem
+      }),
+      quality: 'partial',
+      reason: 'ai_orchestrator_failed',
+      reasons: ['ai_orchestrator_failed']
+    };
+  }
+
   const problem = normalizeRenderableProblem(enhanced.problem);
 
   return {
     problem,
     ...(returnReport ? {report: enhanced.report} : {}),
-    supported: true
+    ...createSupportedBuildStatus({
+      aiDisabled: false,
+      problem,
+      report: enhanced.report
+    })
   };
 };
 
