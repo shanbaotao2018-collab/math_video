@@ -62,6 +62,7 @@ export const buildBatchProductionPlan = (
         ...(options.includeAudioTrack ? {audioTrack: joinPath(outputDir, 'audio-track.json')} : {}),
         coverHtml: joinPath(outputDir, 'cover.html'),
         ...(options.includeVideo ? {coverPng: joinPath(outputDir, 'cover.png')} : {}),
+        creativeVariantsDir: joinPath(outputDir, 'variants'),
         html: joinPath(outputDir, 'preview.html'),
         ...(options.includeVideo
           ? {

@@ -34,6 +34,18 @@ export type PublishingCoverStrategy = {
   subtitle?: string;
 };
 
+export type PublishingCreativeVariantType = 'error_variant' | 'hook_variant' | 'result_variant';
+
+export type PublishingCreativeVariant = {
+  badge: string;
+  coverStrategy: PublishingCoverStrategy;
+  coverText: string;
+  heroHookText: string;
+  title: string;
+  type: PublishingCreativeVariantType;
+  variantId: string;
+};
+
 export type PublishingSeriesInfo = {
   episodeIndex?: number;
   episodeKey: string;
@@ -57,6 +69,7 @@ export type PublishingPack = {
   coverFrame: PublishingCoverFrame;
   coverStrategy: PublishingCoverStrategy;
   coverText: string;
+  creativeVariants: PublishingCreativeVariant[];
   hashtags: string[];
   series?: PublishingSeriesInfo;
   title: string;

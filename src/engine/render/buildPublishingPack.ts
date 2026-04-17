@@ -6,6 +6,8 @@ import type {
   PublishingCoverFrameSource,
   PublishingCoverMode,
   PublishingCoverStrategy,
+  PublishingCreativeVariant,
+  PublishingCreativeVariantType,
   PublishingPack,
   PublishingCoverContentGoal,
   PublishingCoverRecommendedUseCase,
@@ -275,20 +277,23 @@ const buildCoverStrategy = (
   hookText: string,
   answerText: string,
   coverText: string,
-  title: string
+  title: string,
+  coverMode?: PublishingCoverMode,
+  badgeOverride?: string
 ): PublishingCoverStrategy => {
-  const mode = inferCoverMode(args, answerText);
+  const mode = coverMode ?? inferCoverMode(args, answerText);
   const coverLines = splitCoverText(coverText);
   const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
   const resultCue = getCueByKind(args.emphasisPlan, 'result');
   const badge =
-    mode === 'mistake_cover'
+    badgeOverride ??
+    (mode === 'mistake_cover'
       ? '易错点'
       : mode === 'result_cover'
         ? '最终答案'
         : args.series?.episodeIndex
           ? `第${args.series.episodeIndex}题`
-          : '先看这里';
+          : '先看这里');
   const source =
     coverLines[0]
       ? 'cover_text'
@@ -341,6 +346,103 @@ const buildCoverStrategy = (
   };
 };
 
+const getEpisodePrefix = (args: BuildPublishingPackArgs) => {
+  return args.series?.episodeIndex ? `第${args.series.episodeIndex}题｜` : '';
+};
+
+const getVariantTitlePrefix = (
+  args: BuildPublishingPackArgs,
+  variantType: PublishingCreativeVariantType
+) => {
+  const familyLabel = args.family.label || '代数题';
+  const episodePrefix = getEpisodePrefix(args);
+
+  switch (variantType) {
+    case 'error_variant':
+      return `${episodePrefix}${familyLabel}易错版：`;
+    case 'hook_variant':
+      return `${episodePrefix}${familyLabel}钩子版：`;
+    case 'result_variant':
+      return `${episodePrefix}${familyLabel}答案版：`;
+  }
+};
+
+const buildCreativeVariants = (
+  args: BuildPublishingPackArgs,
+  hookText: string,
+  answerText: string
+): PublishingCreativeVariant[] => {
+  const equationText = cleanLatexForCopy(args.equation);
+  const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
+  const resultCue = getCueByKind(args.emphasisPlan, 'result');
+  const rawErrorHook = selectFirst(mistakeCue?.text, hookText, '这一步最容易错');
+  const rawHookHook = selectFirst(hookText, '先别急着算，先看入口');
+  const errorHook = clampCopy(
+    /错|翻车|坑/.test(rawErrorHook) ? rawErrorHook : `90%会错：${rawErrorHook}`,
+    24
+  );
+  const hookHook = clampCopy(/^停一下/.test(rawHookHook) ? rawHookHook : `停一下：${rawHookHook}`, 24);
+  const resultHook = clampCopy(
+    selectFirst(resultCue?.text, answerText ? `这题答案直接看 ${answerText}` : undefined, '这题3秒看答案'),
+    24
+  );
+  const specs: Array<{
+    badge: string;
+    coverMode: PublishingCoverMode;
+    coverText: string;
+    heroHookText: string;
+    title: string;
+    type: PublishingCreativeVariantType;
+    variantId: string;
+  }> = [
+    {
+      badge: '易错点',
+      coverMode: 'mistake_cover',
+      coverText: [errorHook, equationText].filter(Boolean).join('\n'),
+      heroHookText: errorHook,
+      title: clampCopy(`${getVariantTitlePrefix(args, 'error_variant')}${errorHook}`, 46),
+      type: 'error_variant',
+      variantId: 'variant-error'
+    },
+    {
+      badge: args.series?.episodeIndex ? `第${args.series.episodeIndex}题` : '先看这里',
+      coverMode: 'hook_cover',
+      coverText: [hookHook, equationText].filter(Boolean).join('\n'),
+      heroHookText: hookHook,
+      title: clampCopy(`${getVariantTitlePrefix(args, 'hook_variant')}${hookHook}`, 46),
+      type: 'hook_variant',
+      variantId: 'variant-hook'
+    },
+    {
+      badge: '最终答案',
+      coverMode: 'result_cover',
+      coverText: [resultHook, answerText ? `答案 ${answerText}` : equationText].filter(Boolean).join('\n'),
+      heroHookText: resultHook,
+      title: clampCopy(`${getVariantTitlePrefix(args, 'result_variant')}${answerText || resultHook}`, 46),
+      type: 'result_variant',
+      variantId: 'variant-result'
+    }
+  ];
+
+  return specs.map((spec) => ({
+    badge: spec.badge,
+    coverStrategy: buildCoverStrategy(
+      args,
+      spec.heroHookText,
+      answerText,
+      spec.coverText,
+      spec.title,
+      spec.coverMode,
+      spec.badge
+    ),
+    coverText: spec.coverText,
+    heroHookText: spec.heroHookText,
+    title: spec.title,
+    type: spec.type,
+    variantId: spec.variantId
+  }));
+};
+
 const buildCaption = (args: BuildPublishingPackArgs, hookText: string, answerText: string) => {
   const ruleCue = getCueByKind(args.emphasisPlan, 'rule');
   const mistakeCue = getCueByKind(args.emphasisPlan, 'mistake');
@@ -383,6 +485,7 @@ export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPa
   const coverText = buildCoverText(args, hookText, answerText);
   const title = buildTitle(args, hookText, answerText);
   const coverStrategy = buildCoverStrategy(args, hookText, answerText, coverText, title);
+  const creativeVariants = buildCreativeVariants(args, hookText, answerText);
   const hashtags = buildHashtags(args);
   const episodeNumber = args.series?.episodeIndex ? formatEpisodeNumber(args.series.episodeIndex) : undefined;
   const seriesId = args.series?.seriesId ?? `${args.family.id}-${args.qualityTier}`;
@@ -393,6 +496,7 @@ export function buildPublishingPack(args: BuildPublishingPackArgs): PublishingPa
     coverFrame: buildCoverFrame(args.renderPlan, args.emphasisPlan, coverStrategy.mode),
     coverStrategy,
     coverText,
+    creativeVariants,
     hashtags,
     series: {
       ...(args.series?.episodeIndex ? {episodeIndex: args.series.episodeIndex} : {}),

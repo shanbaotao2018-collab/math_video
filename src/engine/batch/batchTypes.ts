@@ -166,6 +166,7 @@ export type BatchOutputAssetPaths = {
   audioTrack?: string;
   coverHtml: string;
   coverPng?: string;
+  creativeVariantsDir: string;
   html: string;
   mp4?: string;
   productEntry: string;

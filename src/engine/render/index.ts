@@ -21,6 +21,8 @@ export type {
   PublishingCoverStrategy,
   PublishingCoverContentGoal,
   PublishingCoverRecommendedUseCase,
+  PublishingCreativeVariant,
+  PublishingCreativeVariantType,
   PublishingPack,
   PublishingSeriesContext,
   PublishingSeriesInfo

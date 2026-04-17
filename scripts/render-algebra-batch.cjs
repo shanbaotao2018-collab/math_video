@@ -126,6 +126,49 @@ const writeText = (filePath, value) => {
   fs.writeFileSync(filePath, value);
 };
 
+const buildVariantPublishingPack = (publishingPack, variant) => ({
+  ...publishingPack,
+  coverStrategy: variant.coverStrategy,
+  coverText: variant.coverText,
+  selectedCreativeVariant: variant,
+  title: variant.title
+});
+
+const writeCreativeVariantAssets = ({
+  equation,
+  familyLabel,
+  integration,
+  publishingPack,
+  variantDir
+}) => {
+  if (!publishingPack?.creativeVariants?.length) {
+    return [];
+  }
+
+  return publishingPack.creativeVariants.map((variant) => {
+    const variantPublishingPack = buildVariantPublishingPack(publishingPack, variant);
+    const publishingPath = path.join(variantDir, `${variant.variantId}.publishing.json`);
+    const coverHtmlPath = path.join(variantDir, `${variant.variantId}.cover.html`);
+
+    writeJson(publishingPath, variantPublishingPack);
+    writeText(
+      coverHtmlPath,
+      integration.buildCoverHtml({
+        equation,
+        familyLabel,
+        publishingPack: variantPublishingPack
+      })
+    );
+
+    return {
+      coverHtml: coverHtmlPath,
+      publishing: publishingPath,
+      type: variant.type,
+      variantId: variant.variantId
+    };
+  });
+};
+
 const resolveOutputPath = (relativePath) => {
   return path.resolve(process.cwd(), relativePath);
 };
@@ -406,6 +449,13 @@ const main = async () => {
     if (productEntry.publishingPack) {
       writeJson(resolveOutputPath(episodePlan.assetPaths.publishing), productEntry.publishingPack);
       assetPaths.publishing = episodePlan.assetPaths.publishing;
+      assetPaths.creativeVariants = writeCreativeVariantAssets({
+        equation: productEntry.normalizedEquation,
+        familyLabel: productEntry.family.label,
+        integration,
+        publishingPack: productEntry.publishingPack,
+        variantDir: resolveOutputPath(episodePlan.assetPaths.creativeVariantsDir)
+      });
     }
 
     if (productEntry.voiceCuePlan) {
@@ -461,6 +511,24 @@ const main = async () => {
               viewport
             });
             assetPaths.coverPng = episodePlan.assetPaths.coverPng;
+          }
+
+          if (assetPaths.creativeVariants?.length) {
+            assetPaths.creativeVariants = assetPaths.creativeVariants.map((variantAsset) => {
+              const coverPngPath = variantAsset.coverHtml.replace(/\.cover\.html$/, '.cover.png');
+
+              renderScreenshot({
+                chromePath,
+                outputPath: coverPngPath,
+                url: pathToFileURL(variantAsset.coverHtml).href,
+                viewport
+              });
+
+              return {
+                ...variantAsset,
+                coverPng: coverPngPath
+              };
+            });
           }
 
           const keyframeResult = renderKeyframes({

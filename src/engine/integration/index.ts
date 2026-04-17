@@ -70,6 +70,8 @@ export {
   type PublishingCoverStrategy,
   type PublishingCoverContentGoal,
   type PublishingCoverRecommendedUseCase,
+  type PublishingCreativeVariant,
+  type PublishingCreativeVariantType,
   type PublishingPack,
   type PublishingSeriesContext,
   type PublishingSeriesInfo,

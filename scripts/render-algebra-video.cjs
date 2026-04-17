@@ -224,6 +224,50 @@ const renderMp4FromFrames = ({concatFilePath, fps, outputPath}) => {
   ]);
 };
 
+const buildVariantPublishingPack = (publishingPack, variant) => ({
+  ...publishingPack,
+  coverStrategy: variant.coverStrategy,
+  coverText: variant.coverText,
+  selectedCreativeVariant: variant,
+  title: variant.title
+});
+
+const writeCreativeVariantAssets = ({
+  basename,
+  equation,
+  familyLabel,
+  outputDir,
+  publishingPack
+}) => {
+  if (!publishingPack?.creativeVariants?.length) {
+    return [];
+  }
+
+  const variantDir = path.join(outputDir, `${basename}-variants`);
+  ensureDir(variantDir);
+
+  return publishingPack.creativeVariants.map((variant) => {
+    const variantPublishingPack = buildVariantPublishingPack(publishingPack, variant);
+    const variantBase = `${basename}.${variant.variantId}`;
+    const publishingPath = path.join(variantDir, `${variantBase}.publishing.json`);
+    const coverHtmlPath = path.join(variantDir, `${variantBase}.cover.html`);
+    const coverHtml = buildCoverHtml({
+      equation,
+      familyLabel,
+      publishingPack: variantPublishingPack
+    });
+
+    writeJson(publishingPath, variantPublishingPack);
+    fs.writeFileSync(coverHtmlPath, coverHtml);
+
+    return {
+      coverHtmlPath,
+      publishingPath,
+      variant
+    };
+  });
+};
+
 const main = async () => {
   const args = parseArgs(process.argv.slice(2));
 
@@ -287,6 +331,15 @@ const main = async () => {
   const frameDir = path.join(process.cwd(), 'out', `${basename}-frames`);
   const mp4Path = path.join(process.cwd(), 'out', `${basename}.mp4`);
   const voicedMp4Path = path.join(process.cwd(), 'out', `${basename}.voiced.mp4`);
+  const creativeVariantAssets = productEntry.publishingPack
+    ? writeCreativeVariantAssets({
+        basename,
+        equation: productEntry.normalizedEquation,
+        familyLabel: productEntry.family.label,
+        outputDir: path.join(process.cwd(), 'out'),
+        publishingPack: productEntry.publishingPack
+      })
+    : [];
 
   fs.writeFileSync(htmlPath, html);
   if (productEntry.publishingPack) {
@@ -362,6 +415,10 @@ const main = async () => {
   if (productEntry.publishingPack) {
     console.log(`[video] publishing pack: ${publishingPackPath}`);
   }
+  creativeVariantAssets.forEach((asset) => {
+    console.log(`[video] variant ${asset.variant.variantId} publishing: ${asset.publishingPath}`);
+    console.log(`[video] variant ${asset.variant.variantId} cover html: ${asset.coverHtmlPath}`);
+  });
   console.log(`[video] subtitle cues: ${subtitleCuePath}`);
   console.log(`[video] srt: ${srtPath}`);
   if (productEntry.voiceCuePlan) {
@@ -393,6 +450,18 @@ const main = async () => {
       });
       console.log(`[video] cover png: ${coverPngPath}`);
     }
+
+    creativeVariantAssets.forEach((asset) => {
+      const coverPngPath = asset.coverHtmlPath.replace(/\.cover\.html$/, '.cover.png');
+
+      renderScreenshot({
+        chromePath,
+        outputPath: coverPngPath,
+        url: pathToFileURL(asset.coverHtmlPath).href,
+        viewport
+      });
+      console.log(`[video] variant ${asset.variant.variantId} cover png: ${coverPngPath}`);
+    });
 
     renderScreenshot({
       chromePath,

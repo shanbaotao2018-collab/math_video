@@ -27,15 +27,26 @@ import {
   resolveVoiceStrategyProfile,
   synthesizeVoiceCuePlan
 } from '../integration';
-import type {PublishingCoverMode, VoiceCuePlan} from '../render';
+import type {PublishingCoverMode, PublishingCreativeVariantType, PublishingPack, VoiceCuePlan} from '../render';
 import {ALGEBRA_EVALUATION_CASES, type AlgebraEvaluationCase} from './algebraEvaluationCases';
 
 const fs = require('node:fs');
 const childProcess = require('node:child_process');
+const path = require('node:path');
 
 const FFMPEG_PATH = '/opt/homebrew/bin/ffmpeg';
 const FFPROBE_PATH = '/opt/homebrew/bin/ffprobe';
 const VALID_COVER_MODES = new Set<PublishingCoverMode>(['hook_cover', 'mistake_cover', 'result_cover']);
+const VALID_CREATIVE_VARIANT_TYPES = new Set<PublishingCreativeVariantType>([
+  'error_variant',
+  'hook_variant',
+  'result_variant'
+]);
+const EXPECTED_COVER_MODE_BY_VARIANT: Record<PublishingCreativeVariantType, PublishingCoverMode> = {
+  error_variant: 'mistake_cover',
+  hook_variant: 'hook_cover',
+  result_variant: 'result_cover'
+};
 
 type FamilyStats = {
   passed: number;
@@ -101,6 +112,104 @@ const hasDuplicateCoverCopy = (values: Array<string | undefined>) => {
   }
 
   return false;
+};
+
+const slugifyEvaluationPathPart = (value: string) => {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'item';
+};
+
+const buildVariantPublishingPack = (
+  publishingPack: PublishingPack,
+  variant: PublishingPack['creativeVariants'][number]
+): PublishingPack & {selectedCreativeVariant: PublishingPack['creativeVariants'][number]} => {
+  return {
+    ...publishingPack,
+    coverStrategy: variant.coverStrategy,
+    coverText: variant.coverText,
+    selectedCreativeVariant: variant,
+    title: variant.title
+  };
+};
+
+const collectCreativeVariantIssues = (
+  result: Awaited<ReturnType<typeof buildAlgebraProductEntry>>,
+  publishingPack: PublishingPack
+) => {
+  const issues: string[] = [];
+  const variants = publishingPack.creativeVariants ?? [];
+
+  if (variants.length !== 3) {
+    issues.push(`creativeVariants count mismatch: expected 3, got ${variants.length}`);
+  }
+
+  const variantTypes = new Set(variants.map((variant) => variant.type));
+
+  VALID_CREATIVE_VARIANT_TYPES.forEach((variantType) => {
+    if (!variantTypes.has(variantType)) {
+      issues.push(`creativeVariants missing ${variantType}.`);
+    }
+  });
+
+  const titles = new Set(variants.map((variant) => normalizeCoverCompareText(variant.title)).filter(Boolean));
+  const mainTitles = new Set(
+    variants.map((variant) => normalizeCoverCompareText(variant.coverStrategy.mainTitle)).filter(Boolean)
+  );
+
+  if (titles.size !== variants.length) {
+    issues.push('creativeVariants titles must differ.');
+  }
+
+  if (mainTitles.size !== variants.length) {
+    issues.push('creativeVariants cover main titles must differ.');
+  }
+
+  variants.forEach((variant) => {
+    if (!VALID_CREATIVE_VARIANT_TYPES.has(variant.type)) {
+      issues.push(`creativeVariant type invalid: ${variant.type}`);
+    }
+
+    if (variant.coverStrategy.mode !== EXPECTED_COVER_MODE_BY_VARIANT[variant.type]) {
+      issues.push(`creativeVariant ${variant.variantId} cover mode mismatch.`);
+    }
+
+    if (!variant.title.trim() || !variant.coverText.trim() || !variant.heroHookText.trim() || !variant.badge.trim()) {
+      issues.push(`creativeVariant ${variant.variantId} has empty publish fields.`);
+    }
+
+    if (variant.coverStrategy.badge !== variant.badge) {
+      issues.push(`creativeVariant ${variant.variantId} badge is not reflected in coverStrategy.`);
+    }
+
+    const variantPack = buildVariantPublishingPack(publishingPack, variant);
+    const variantDir = path.join(
+      '/tmp',
+      'math-video-creative-variant-evaluation',
+      slugifyEvaluationPathPart(result.normalizedEquation)
+    );
+    const publishingPath = path.join(variantDir, `${variant.variantId}.publishing.json`);
+    const coverHtmlPath = path.join(variantDir, `${variant.variantId}.cover.html`);
+
+    fs.mkdirSync(variantDir, {recursive: true});
+    fs.writeFileSync(publishingPath, JSON.stringify(variantPack, null, 2));
+    fs.writeFileSync(
+      coverHtmlPath,
+      buildCoverHtml({
+        equation: result.normalizedEquation,
+        familyLabel: result.family.label,
+        publishingPack: variantPack
+      })
+    );
+
+    if (!fs.existsSync(publishingPath) || !fs.existsSync(coverHtmlPath)) {
+      issues.push(`creativeVariant ${variant.variantId} asset files missing.`);
+    }
+  });
+
+  return issues;
 };
 
 const hasVisibleNarrationDifference = (
@@ -725,6 +834,8 @@ const collectCaseIssues = async (evaluationCase: AlgebraEvaluationCase) => {
       if (!coverHtml.includes('class="math-cover') || !coverHtml.includes('data-cover-mode=')) {
         issues.push('cover html asset missing required cover markers.');
       }
+
+      issues.push(...collectCreativeVariantIssues(result, publishingPack));
     }
   }
 
@@ -1789,6 +1900,7 @@ const collectBatchProductionIssues = async () => {
     const requiredAssetPaths = [
       episode.assetPaths.coverHtml,
       episode.assetPaths.coverPng,
+      episode.assetPaths.creativeVariantsDir,
       episode.assetPaths.html,
       episode.assetPaths.productEntry,
       episode.assetPaths.publishing,
@@ -1857,6 +1969,10 @@ const collectBatchProductionIssues = async () => {
 
     if (!VALID_COVER_MODES.has(publishingPack.coverStrategy.mode) || !publishingPack.coverStrategy.mainTitle.trim()) {
       issues.push(`batch coverStrategy incomplete for ${datasetEquation.equation}`);
+    }
+
+    if ((publishingPack.creativeVariants ?? []).length !== 3) {
+      issues.push(`batch creativeVariants count mismatch for ${datasetEquation.equation}`);
     }
 
     const coverHtml = buildCoverHtml({
